@@ -70,17 +70,29 @@ function getRandomSuggestion() {
   return suggestions[Math.floor(Math.random() * suggestions.length)];
 }
 
-// Create and show the modal
+// Create and show the reminder
 function showReflectionModal() {
   try {
-    // Check if modal already exists
-    if (document.getElementById('creativity-guard-host')) {
+    // Check if reminder already exists
+    if (document.getElementById('creativity-guard-reminder')) {
       return;
     }
     
+    // Get the input element for the current site
+    const currentSite = Object.keys(siteConfigs).find(site => window.location.hostname.includes(site));
+    const config = currentSite ? siteConfigs[currentSite] : null;
+    
+    if (!config) return;
+    
+    const inputElement = document.querySelector(config.inputSelector);
+    if (!inputElement) return;
+    
     // Create a host element for the shadow DOM
     const host = document.createElement('div');
-    host.id = 'creativity-guard-host';
+    host.id = 'creativity-guard-reminder';
+    
+    // Position the reminder relative to the input
+    const inputRect = inputElement.getBoundingClientRect();
     
     // Create a shadow root
     const shadow = host.attachShadow({ mode: 'closed' });
@@ -88,138 +100,201 @@ function showReflectionModal() {
     // Add styles
     const style = document.createElement('style');
     style.textContent = `
-      #modal {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: white;
-        padding: 20px;
+      .reminder {
+        position: absolute;
+        background: #f8f9fa;
+        border: 1px solid #e2e8f0;
         border-radius: 8px;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        z-index: 999999;
-        max-width: 500px;
-        width: 90%;
-      }
-      .content {
+        padding: 10px 15px;
+        width: calc(100% - 20px);
+        max-width: 600px;
         font-family: system-ui, -apple-system, sans-serif;
+        font-size: 14px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        z-index: 999;
+        margin-bottom: 8px;
+        animation: fadeIn 0.3s ease-in-out;
       }
-      h2 {
-        margin-top: 0;
+      
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      
+      .reminder-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 5px;
+      }
+      
+      .reminder-title {
+        font-weight: bold;
         color: #333;
+        margin: 0;
       }
+      
+      .close-button {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: #888;
+        font-size: 16px;
+        padding: 0;
+        margin: 0;
+      }
+      
+      .reminder-content {
+        margin-bottom: 8px;
+      }
+      
       .suggestion {
         font-style: italic;
         color: #666;
-        margin: 15px 0;
+        margin: 5px 0;
+        font-size: 13px;
       }
+      
       .buttons {
         display: flex;
-        gap: 10px;
-        margin-top: 20px;
+        gap: 8px;
       }
+      
       button {
-        padding: 8px 16px;
+        padding: 6px 12px;
         border: none;
         border-radius: 4px;
         cursor: pointer;
-        font-size: 14px;
+        font-size: 13px;
+        transition: background 0.2s;
       }
+      
       #proceed {
         background: #0a66c2;
         color: white;
       }
+      
+      #proceed:hover {
+        background: #0955a3;
+      }
+      
       #skip {
         background: #e0e0e0;
         color: #333;
       }
-      #overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.5);
-        z-index: 999998;
+      
+      #skip:hover {
+        background: #d0d0d0;
       }
     `;
     
-    // Create overlay
-    const overlay = document.createElement('div');
-    overlay.id = 'overlay';
+    // Create reminder container
+    const reminder = document.createElement('div');
+    reminder.className = 'reminder';
     
-    // Create modal container
-    const modal = document.createElement('div');
-    modal.id = 'modal';
+    // Create header with title and close button
+    const header = document.createElement('div');
+    header.className = 'reminder-header';
     
-    // Create content container
+    const title = document.createElement('p');
+    title.className = 'reminder-title';
+    title.textContent = 'Wait a Moment';
+    
+    const closeButton = document.createElement('button');
+    closeButton.className = 'close-button';
+    closeButton.textContent = '✕';
+    closeButton.onclick = () => {
+      stats.bypassCount++;
+      saveStats();
+      host.remove();
+    };
+    
+    header.appendChild(title);
+    header.appendChild(closeButton);
+    
+    // Create content
     const content = document.createElement('div');
-    content.className = 'content';
+    content.className = 'reminder-content';
     
-    // Create header
-    const header = document.createElement('h2');
-    header.textContent = 'Wait a Moment';
-    content.appendChild(header);
+    const message = document.createElement('p');
+    message.textContent = 'Have you spent two minutes brainstorming your own ideas first?';
+    message.style.margin = '0 0 5px 0';
     
-    // Create main message
-    const mainMessage = document.createElement('p');
-    mainMessage.textContent = "It looks like you're about to ask AI for help.";
-    content.appendChild(mainMessage);
-    
-    // Create question
-    const question = document.createElement('p');
-    question.innerHTML = '<strong>Have you spent two minutes brainstorming or writing down your own ideas first?</strong>';
-    content.appendChild(question);
-    
-    // Random suggestion
     const suggestion = document.createElement('p');
     suggestion.className = 'suggestion';
     suggestion.textContent = getRandomSuggestion();
+    
+    content.appendChild(message);
     content.appendChild(suggestion);
     
-    // Create buttons container
+    // Create buttons
     const buttonsContainer = document.createElement('div');
     buttonsContainer.className = 'buttons';
     
-    // Create proceed button
     const proceedButton = document.createElement('button');
     proceedButton.id = 'proceed';
-    proceedButton.textContent = 'I did my own thinking: Proceed';
+    proceedButton.textContent = 'I did my own thinking';
     proceedButton.onclick = () => {
       stats.thoughtFirstCount++;
       saveStats();
       host.remove();
     };
     
-    // Create skip button
     const skipButton = document.createElement('button');
     skipButton.id = 'skip';
-    skipButton.textContent = 'Skip this check';
+    skipButton.textContent = 'Skip';
     skipButton.onclick = () => {
       stats.bypassCount++;
       saveStats();
       host.remove();
     };
     
-    // Add buttons to container
     buttonsContainer.appendChild(proceedButton);
     buttonsContainer.appendChild(skipButton);
-    content.appendChild(buttonsContainer);
     
-    // Add everything to the shadow DOM
-    modal.appendChild(content);
+    // Add everything to the reminder
+    reminder.appendChild(header);
+    reminder.appendChild(content);
+    reminder.appendChild(buttonsContainer);
+    
+    // Add to shadow DOM
     shadow.appendChild(style);
-    shadow.appendChild(overlay);
-    shadow.appendChild(modal);
+    shadow.appendChild(reminder);
     
-    // Add to page
-    document.body.appendChild(host);
+    // Position and append the reminder to the page
+    host.style.position = 'absolute';
+    host.style.width = `${inputElement.offsetWidth}px`;
+    host.style.zIndex = '9999';
+    
+    // Different positioning based on the site
+    if (currentSite === 'chat.openai.com' || currentSite === 'chatgpt.com') {
+      // ChatGPT has a specific layout
+      const formParent = inputElement.closest('form');
+      if (formParent && formParent.parentNode) {
+        formParent.parentNode.insertBefore(host, formParent);
+      } else {
+        // Fallback insertion
+        inputElement.parentNode.insertBefore(host, inputElement);
+      }
+    } else if (currentSite === 'claude.ai') {
+      // Claude has a specific layout
+      const containerDiv = inputElement.closest('.cl-text-container');
+      if (containerDiv) {
+        containerDiv.insertBefore(host, containerDiv.firstChild);
+      } else {
+        // Fallback insertion
+        inputElement.parentNode.insertBefore(host, inputElement);
+      }
+    } else {
+      // Generic insertion before the input element
+      inputElement.parentNode.insertBefore(host, inputElement);
+    }
     
     // Increment AI usage attempt counter
     stats.aiUsageCount++;
     saveStats();
   } catch (e) {
-    console.error('Error showing modal:', e);
+    console.error('%c[Creativity Guard] Error showing reminder:', 'color: #ff0000;', e);
   }
 }
 
