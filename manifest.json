@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Creativity Guard",
+  "version": "1.0",
+  "description": "A gentle reminder to think for yourself before using AI tools",
+  "permissions": ["storage", "tabs"],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chat.openai.com/*",
+        "https://bard.google.com/*",
+        "https://claude.ai/*",
+        "https://poe.com/*",
+        "https://gemini.google.com/*",
+        "https://www.typingmind.com/*",
+        "https://chatgpt.com/*"
+      ],
+      "js": ["content.js"],
+      "css": ["styles.css"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.svg",
+      "48": "icons/icon48.svg",
+      "128": "icons/icon128.svg"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.svg",
+    "48": "icons/icon48.svg",
+    "128": "icons/icon128.svg"
+  }
+} 
