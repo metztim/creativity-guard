@@ -4,6 +4,16 @@
   "version": "1.0",
   "description": "A gentle reminder to think for yourself before using AI tools",
   "permissions": ["storage", "tabs"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "https://*.linkedin.com/*",
+    "https://linkedin.com/*",
+    "https://*.twitter.com/*",
+    "https://twitter.com/*",
+    "https://x.com/*"
+  ],
   "content_scripts": [
     {
       "matches": [

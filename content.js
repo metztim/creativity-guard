@@ -74,46 +74,146 @@ function getRandomSuggestion() {
 function showReflectionModal() {
   try {
     // Check if modal already exists
-    if (document.getElementById('creativity-guard-modal')) {
+    if (document.getElementById('creativity-guard-host')) {
       return;
     }
     
-    // Create modal container
-    const modal = document.createElement('div');
-    modal.id = 'creativity-guard-modal';
+    // Create a host element for the shadow DOM
+    const host = document.createElement('div');
+    host.id = 'creativity-guard-host';
     
-    // Random suggestion
-    const suggestion = getRandomSuggestion();
+    // Create a shadow root
+    const shadow = host.attachShadow({ mode: 'closed' });
     
-    // Set modal content
-    modal.innerHTML = `
-      <div class="creativity-guard-content">
-        <h2>Wait a Moment</h2>
-        <p>It looks like you're about to ask AI for help.</p>
-        <p><strong>Have you spent two minutes brainstorming or writing down your own ideas first?</strong></p>
-        <p class="creativity-guard-suggestion">${suggestion}</p>
-        <div class="creativity-guard-buttons">
-          <button id="creativity-guard-proceed">I did my own thinking: Proceed</button>
-          <button id="creativity-guard-skip">Skip this check</button>
-        </div>
-      </div>
+    // Add styles
+    const style = document.createElement('style');
+    style.textContent = `
+      #modal {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        z-index: 999999;
+        max-width: 500px;
+        width: 90%;
+      }
+      .content {
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+      h2 {
+        margin-top: 0;
+        color: #333;
+      }
+      .suggestion {
+        font-style: italic;
+        color: #666;
+        margin: 15px 0;
+      }
+      .buttons {
+        display: flex;
+        gap: 10px;
+        margin-top: 20px;
+      }
+      button {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+      #proceed {
+        background: #0a66c2;
+        color: white;
+      }
+      #skip {
+        background: #e0e0e0;
+        color: #333;
+      }
+      #overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 999998;
+      }
     `;
     
-    // Add to page
-    document.body.appendChild(modal);
+    // Create overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'overlay';
     
-    // Set up button handlers
-    document.getElementById('creativity-guard-proceed').addEventListener('click', function() {
+    // Create modal container
+    const modal = document.createElement('div');
+    modal.id = 'modal';
+    
+    // Create content container
+    const content = document.createElement('div');
+    content.className = 'content';
+    
+    // Create header
+    const header = document.createElement('h2');
+    header.textContent = 'Wait a Moment';
+    content.appendChild(header);
+    
+    // Create main message
+    const mainMessage = document.createElement('p');
+    mainMessage.textContent = "It looks like you're about to ask AI for help.";
+    content.appendChild(mainMessage);
+    
+    // Create question
+    const question = document.createElement('p');
+    question.innerHTML = '<strong>Have you spent two minutes brainstorming or writing down your own ideas first?</strong>';
+    content.appendChild(question);
+    
+    // Random suggestion
+    const suggestion = document.createElement('p');
+    suggestion.className = 'suggestion';
+    suggestion.textContent = getRandomSuggestion();
+    content.appendChild(suggestion);
+    
+    // Create buttons container
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.className = 'buttons';
+    
+    // Create proceed button
+    const proceedButton = document.createElement('button');
+    proceedButton.id = 'proceed';
+    proceedButton.textContent = 'I did my own thinking: Proceed';
+    proceedButton.onclick = () => {
       stats.thoughtFirstCount++;
       saveStats();
-      modal.remove();
-    });
+      host.remove();
+    };
     
-    document.getElementById('creativity-guard-skip').addEventListener('click', function() {
+    // Create skip button
+    const skipButton = document.createElement('button');
+    skipButton.id = 'skip';
+    skipButton.textContent = 'Skip this check';
+    skipButton.onclick = () => {
       stats.bypassCount++;
       saveStats();
-      modal.remove();
-    });
+      host.remove();
+    };
+    
+    // Add buttons to container
+    buttonsContainer.appendChild(proceedButton);
+    buttonsContainer.appendChild(skipButton);
+    content.appendChild(buttonsContainer);
+    
+    // Add everything to the shadow DOM
+    modal.appendChild(content);
+    shadow.appendChild(style);
+    shadow.appendChild(overlay);
+    shadow.appendChild(modal);
+    
+    // Add to page
+    document.body.appendChild(host);
     
     // Increment AI usage attempt counter
     stats.aiUsageCount++;
@@ -299,34 +399,17 @@ const socialMediaModule = {
   // Storage for social media stats and settings
   storage: {
     get: function(callback) {
-      try {
-        chrome.storage.local.get(['socialMediaUsage'], function(result) {
-          if (chrome.runtime.lastError) {
-            console.error('Social media storage get error:', chrome.runtime.lastError);
-            callback(null);
-            return;
-          }
-          callback(result.socialMediaUsage);
-        });
-      } catch (e) {
-        console.error('Social media storage get error:', e);
-        callback(null);
-      }
+      chrome.runtime.sendMessage({ type: 'GET_SOCIAL_MEDIA_SETTINGS' }, (response) => {
+        callback(response);
+      });
     },
     set: function(value, callback) {
-      try {
-        chrome.storage.local.set({socialMediaUsage: value}, function() {
-          if (chrome.runtime.lastError) {
-            console.error('Social media storage set error:', chrome.runtime.lastError);
-            if (callback) callback(false);
-            return;
-          }
-          if (callback) callback(true);
-        });
-      } catch (e) {
-        console.error('Social media storage set error:', e);
-        if (callback) callback(false);
-      }
+      chrome.runtime.sendMessage({ 
+        type: 'SET_SOCIAL_MEDIA_SETTINGS',
+        settings: value
+      }, (response) => {
+        if (callback) callback(response && response.success);
+      });
     }
   },
   
@@ -344,19 +427,37 @@ const socialMediaModule = {
   
   // Initialize the module
   init: function() {
+    console.log('Social media module initializing...');
     // Load settings and then handle the site visit after settings are loaded
     this.storage.get((settings) => {
-      this.settings = settings || this.defaultSettings;
+      console.log('Loaded settings:', settings);
+      
+      // If no settings exist yet, initialize with defaults
+      if (!settings) {
+        console.log('No settings found, using defaults:', this.defaultSettings);
+        settings = this.defaultSettings;
+        // Save default settings
+        this.storage.set(settings);
+      }
+      
+      this.settings = settings;
       
       // Make sure the visits object exists
       if (!this.settings.visits) {
+        console.log('No visits object found, initializing empty visits');
         this.settings.visits = {};
+        // Save the initialized visits object
+        this.storage.set(this.settings);
       }
+      
+      console.log('Current visits:', this.settings.visits);
       
       // Now that settings are loaded, check if we're on a social media site
       if (window.location.hostname.includes('linkedin.com')) {
+        console.log('On LinkedIn, handling site visit');
         this.handleSocialMediaSite('linkedin');
       } else if (window.location.hostname.includes('twitter.com') || window.location.hostname.includes('x.com')) {
+        console.log('On Twitter, handling site visit');
         this.handleSocialMediaSite('twitter');
       }
     });
@@ -397,23 +498,35 @@ const socialMediaModule = {
   // Record a visit
   recordVisit: function(platform) {
     const todayStr = this.getTodayString();
+    console.log(`Recording visit for ${platform} on ${todayStr}`);
     this.settings.visits[platform] = todayStr;
-    this.storage.set(this.settings);
+    // Wait for the storage operation to complete
+    this.storage.set(this.settings, (success) => {
+      console.log(`Visit recording ${success ? 'succeeded' : 'failed'}`);
+      if (!success) {
+        console.error('Failed to record visit for:', platform);
+      }
+    });
   },
   
   // Handle social media site visit
   handleSocialMediaSite: function(platform) {
+    console.log(`Handling ${platform} visit`);
     // Check if the feature is enabled for this platform
     const isEnabled = platform === 'linkedin' ? this.settings.enabledForLinkedin : this.settings.enabledForTwitter;
+    console.log(`Feature enabled for ${platform}:`, isEnabled);
     if (!isEnabled) return;
     
     // Check time and previous visits
     const isAllowedTime = this.isTimeAllowed(platform);
     const hasVisited = this.hasVisitedToday(platform);
+    console.log(`Time allowed: ${isAllowedTime}, Has visited today: ${hasVisited}`);
     
     if (!isAllowedTime || hasVisited) {
+      console.log('Showing restriction modal');
       this.showSocialMediaModal(platform, isAllowedTime, hasVisited);
     } else {
+      console.log('Recording first visit');
       // If all checks pass, record this visit
       this.recordVisit(platform);
     }
@@ -427,50 +540,141 @@ const socialMediaModule = {
         return;
       }
       
+      // Create a host element for the shadow DOM
+      const host = document.createElement('div');
+      host.id = 'social-media-guard-host';
+      
+      // Create a shadow root
+      const shadow = host.attachShadow({ mode: 'closed' });
+      
+      // Add styles
+      const style = document.createElement('style');
+      style.textContent = `
+        #modal {
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: white;
+          padding: 20px;
+          border-radius: 8px;
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+          z-index: 999999;
+          max-width: 500px;
+          width: 90%;
+        }
+        .content {
+          font-family: system-ui, -apple-system, sans-serif;
+        }
+        h2 {
+          margin-top: 0;
+          color: #333;
+        }
+        .buttons {
+          display: flex;
+          gap: 10px;
+          margin-top: 20px;
+        }
+        button {
+          padding: 8px 16px;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 14px;
+        }
+        #proceed {
+          background: #0a66c2;
+          color: white;
+        }
+        #skip {
+          background: #e0e0e0;
+          color: #333;
+        }
+        #overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          z-index: 999998;
+        }
+      `;
+      
+      // Create overlay
+      const overlay = document.createElement('div');
+      overlay.id = 'overlay';
+      
       // Create modal container
       const modal = document.createElement('div');
-      modal.id = 'social-media-guard-modal';
+      modal.id = 'modal';
+      
+      // Create content container
+      const content = document.createElement('div');
+      content.className = 'content';
+      
+      // Create header
+      const header = document.createElement('h2');
+      header.textContent = 'Digital Wellbeing Check';
+      content.appendChild(header);
       
       // Determine message based on restriction reason
-      let message = '';
+      let messageText = '';
       const platformName = platform.charAt(0).toUpperCase() + platform.slice(1);
       const allowedHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour : this.settings.twitterAllowedHour;
       
       if (!isAllowedTime && hasVisited) {
-        message = `You've already visited ${platformName} today, and it's before your allowed time (${allowedHour}:00).`;
+        messageText = `You've already visited ${platformName} today, and it's before your allowed time (${allowedHour}:00).`;
       } else if (!isAllowedTime) {
-        message = `It's before your allowed ${platformName} time (${allowedHour}:00).`;
+        messageText = `It's before your allowed ${platformName} time (${allowedHour}:00).`;
       } else if (hasVisited) {
-        message = `You've already visited ${platformName} today.`;
+        messageText = `You've already visited ${platformName} today.`;
       }
       
-      // Set modal content
-      modal.innerHTML = `
-        <div class="creativity-guard-content">
-          <h2>Digital Wellbeing Check</h2>
-          <p>${message}</p>
-          <p><strong>Would you like to continue anyway?</strong></p>
-          <div class="creativity-guard-buttons">
-            <button id="social-media-proceed">Yes, continue</button>
-            <button id="social-media-skip">No, close site</button>
-          </div>
-        </div>
-      `;
+      // Create message paragraph
+      const message = document.createElement('p');
+      message.textContent = messageText;
+      content.appendChild(message);
+      
+      // Create question paragraph
+      const question = document.createElement('p');
+      question.innerHTML = '<strong>Would you like to continue anyway?</strong>';
+      content.appendChild(question);
+      
+      // Create buttons container
+      const buttonsContainer = document.createElement('div');
+      buttonsContainer.className = 'buttons';
+      
+      // Create proceed button
+      const proceedButton = document.createElement('button');
+      proceedButton.id = 'proceed';
+      proceedButton.textContent = 'Yes, continue';
+      proceedButton.onclick = () => {
+        this.recordVisit(platform);
+        host.remove();
+      };
+      
+      // Create skip button
+      const skipButton = document.createElement('button');
+      skipButton.id = 'skip';
+      skipButton.textContent = 'No, close site';
+      skipButton.onclick = () => {
+        window.location.href = 'https://google.com';
+      };
+      
+      // Add buttons to container
+      buttonsContainer.appendChild(proceedButton);
+      buttonsContainer.appendChild(skipButton);
+      content.appendChild(buttonsContainer);
+      
+      // Add everything to the shadow DOM
+      modal.appendChild(content);
+      shadow.appendChild(style);
+      shadow.appendChild(overlay);
+      shadow.appendChild(modal);
       
       // Add to page
-      document.body.appendChild(modal);
-      
-      // Set up button handlers
-      document.getElementById('social-media-proceed').addEventListener('click', () => {
-        // If proceeding, record the visit
-        this.recordVisit(platform);
-        modal.remove();
-      });
-      
-      document.getElementById('social-media-skip').addEventListener('click', () => {
-        // Close the tab or navigate away
-        window.location.href = 'https://google.com';
-      });
+      document.body.appendChild(host);
     } catch (e) {
       console.error('Error showing social media modal:', e);
     }
