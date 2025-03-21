@@ -427,38 +427,42 @@ const socialMediaModule = {
   
   // Initialize the module
   init: function() {
-    console.log('Social media module initializing...');
+    console.log('%c[Creativity Guard] Social media module initializing...', 'color: #0a66c2; font-weight: bold;');
     // Load settings and then handle the site visit after settings are loaded
     this.storage.get((settings) => {
-      console.log('Loaded settings:', settings);
-      
-      // If no settings exist yet, initialize with defaults
-      if (!settings) {
-        console.log('No settings found, using defaults:', this.defaultSettings);
-        settings = this.defaultSettings;
-        // Save default settings
-        this.storage.set(settings);
-      }
-      
-      this.settings = settings;
-      
-      // Make sure the visits object exists
-      if (!this.settings.visits) {
-        console.log('No visits object found, initializing empty visits');
-        this.settings.visits = {};
-        // Save the initialized visits object
-        this.storage.set(this.settings);
-      }
-      
-      console.log('Current visits:', this.settings.visits);
-      
-      // Now that settings are loaded, check if we're on a social media site
-      if (window.location.hostname.includes('linkedin.com')) {
-        console.log('On LinkedIn, handling site visit');
-        this.handleSocialMediaSite('linkedin');
-      } else if (window.location.hostname.includes('twitter.com') || window.location.hostname.includes('x.com')) {
-        console.log('On Twitter, handling site visit');
-        this.handleSocialMediaSite('twitter');
+      try {
+        console.log('%c[Creativity Guard] Loaded settings:', 'color: #0a66c2;', settings);
+        
+        // If no settings exist yet, initialize with defaults
+        if (!settings) {
+          console.log('%c[Creativity Guard] No settings found, using defaults', 'color: #0a66c2;', this.defaultSettings);
+          settings = this.defaultSettings;
+          // Save default settings
+          this.storage.set(settings);
+        }
+        
+        this.settings = settings;
+        
+        // Make sure the visits object exists
+        if (!this.settings.visits) {
+          console.log('%c[Creativity Guard] Initializing visits tracking', 'color: #0a66c2;');
+          this.settings.visits = {};
+          // Save the initialized visits object
+          this.storage.set(this.settings);
+        }
+        
+        console.log('%c[Creativity Guard] Current visits:', 'color: #0a66c2;', this.settings.visits);
+        
+        // Now that settings are loaded, check if we're on a social media site
+        if (window.location.hostname.includes('linkedin.com')) {
+          console.log('%c[Creativity Guard] On LinkedIn, handling site visit', 'color: #0a66c2;');
+          this.handleSocialMediaSite('linkedin');
+        } else if (window.location.hostname.includes('twitter.com') || window.location.hostname.includes('x.com')) {
+          console.log('%c[Creativity Guard] On Twitter, handling site visit', 'color: #0a66c2;');
+          this.handleSocialMediaSite('twitter');
+        }
+      } catch (error) {
+        console.error('%c[Creativity Guard] Error in init:', 'color: #ff0000;', error);
       }
     });
   },
@@ -511,24 +515,29 @@ const socialMediaModule = {
   
   // Handle social media site visit
   handleSocialMediaSite: function(platform) {
-    console.log(`Handling ${platform} visit`);
-    // Check if the feature is enabled for this platform
-    const isEnabled = platform === 'linkedin' ? this.settings.enabledForLinkedin : this.settings.enabledForTwitter;
-    console.log(`Feature enabled for ${platform}:`, isEnabled);
-    if (!isEnabled) return;
-    
-    // Check time and previous visits
-    const isAllowedTime = this.isTimeAllowed(platform);
-    const hasVisited = this.hasVisitedToday(platform);
-    console.log(`Time allowed: ${isAllowedTime}, Has visited today: ${hasVisited}`);
-    
-    if (!isAllowedTime || hasVisited) {
-      console.log('Showing restriction modal');
-      this.showSocialMediaModal(platform, isAllowedTime, hasVisited);
-    } else {
-      console.log('Recording first visit');
-      // If all checks pass, record this visit
-      this.recordVisit(platform);
+    try {
+      console.log(`%c[Creativity Guard] Handling ${platform} visit`, 'color: #0a66c2;');
+      
+      // Check if the feature is enabled for this platform
+      const isEnabled = platform === 'linkedin' ? this.settings.enabledForLinkedin : this.settings.enabledForTwitter;
+      console.log(`%c[Creativity Guard] Feature enabled for ${platform}:`, 'color: #0a66c2;', isEnabled);
+      
+      if (!isEnabled) return;
+      
+      // Check time and previous visits
+      const isAllowedTime = this.isTimeAllowed(platform);
+      const hasVisited = this.hasVisitedToday(platform);
+      console.log(`%c[Creativity Guard] Time allowed: ${isAllowedTime}, Has visited today: ${hasVisited}`, 'color: #0a66c2;');
+      
+      if (!isAllowedTime || hasVisited) {
+        console.log('%c[Creativity Guard] Showing restriction modal', 'color: #0a66c2;');
+        this.showSocialMediaModal(platform, isAllowedTime, hasVisited);
+      } else {
+        console.log('%c[Creativity Guard] Recording first visit', 'color: #0a66c2;');
+        this.recordVisit(platform);
+      }
+    } catch (error) {
+      console.error('%c[Creativity Guard] Error handling site visit:', 'color: #ff0000;', error);
     }
   },
   
