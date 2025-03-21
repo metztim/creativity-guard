@@ -500,6 +500,12 @@ const socialMediaModule = {
   // Current settings
   settings: null,
   
+  // Session consent tracking (resets when browser is closed)
+  sessionConsent: {
+    linkedin: false,
+    twitter: false
+  },
+  
   // Initialize the module
   init: function() {
     console.log('%c[Creativity Guard] Social media module initializing...', 'color: #0a66c2; font-weight: bold;');
@@ -606,6 +612,12 @@ const socialMediaModule = {
       
       if (!isEnabled) return;
       
+      // Check if user already gave consent for this session
+      if (this.sessionConsent[platform]) {
+        console.log(`%c[Creativity Guard] User already gave consent for ${platform} this session`, 'color: #0a66c2;');
+        return;
+      }
+      
       // Check if it's a weekend
       const isWeekendDay = this.isWeekend();
       console.log(`%c[Creativity Guard] Is weekend:`, 'color: #0a66c2;', isWeekendDay);
@@ -621,6 +633,9 @@ const socialMediaModule = {
       } else {
         console.log('%c[Creativity Guard] Recording first visit', 'color: #0a66c2;');
         this.recordVisit(platform);
+        
+        // Set session consent since this is allowed without prompt
+        this.sessionConsent[platform] = true;
       }
     } catch (error) {
       console.error('%c[Creativity Guard] Error handling site visit:', 'color: #ff0000;', error);
@@ -747,7 +762,9 @@ const socialMediaModule = {
       proceedButton.id = 'proceed';
       proceedButton.textContent = 'Yes, continue';
       proceedButton.onclick = () => {
+        // Record visit and set session consent
         this.recordVisit(platform);
+        this.sessionConsent[platform] = true;
         host.remove();
       };
       
