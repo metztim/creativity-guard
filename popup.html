@@ -5,14 +5,18 @@
   <title>Creativity Guard</title>
   <style>
     body {
-      width: 300px;
+      width: 350px;
       padding: 15px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
     }
-    h1 {
+    h1, h2 {
       font-size: 18px;
       color: #2d3748;
       margin-top: 0;
+    }
+    h2 {
+      font-size: 16px;
+      margin-top: 20px;
     }
     .stats-container {
       margin-top: 15px;
@@ -53,31 +57,152 @@
     .reset-button:hover {
       background-color: #cbd5e0;
     }
+    .tab-container {
+      margin-top: 20px;
+    }
+    .tab-buttons {
+      display: flex;
+      border-bottom: 1px solid #edf2f7;
+    }
+    .tab-button {
+      padding: 8px 15px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      color: #4a5568;
+    }
+    .tab-button.active {
+      border-bottom: 2px solid #4299e1;
+      color: #2d3748;
+      font-weight: 600;
+    }
+    .tab-content {
+      display: none;
+      padding: 15px 0;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .setting-item {
+      margin-bottom: 15px;
+    }
+    .setting-label {
+      display: block;
+      margin-bottom: 5px;
+      color: #4a5568;
+    }
+    .setting-control {
+      margin-top: 5px;
+    }
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+    }
+    .checkbox-label input {
+      margin-right: 8px;
+    }
   </style>
 </head>
 <body>
-  <h1>Creativity Guard Stats</h1>
+  <h1>Creativity Guard</h1>
   
-  <div class="stats-container">
-    <div class="stat-item">
-      <div class="stat-label">AI Usage Attempts:</div>
-      <div class="stat-value" id="ai-usage-count">0</div>
+  <div class="tab-container">
+    <div class="tab-buttons">
+      <button class="tab-button active" data-tab="ai-stats">AI Stats</button>
+      <button class="tab-button" data-tab="social-media">Social Media</button>
     </div>
-    <div class="stat-item">
-      <div class="stat-label">Thought First:</div>
-      <div class="stat-value" id="thought-first-count">0</div>
+    
+    <div id="ai-stats" class="tab-content active">
+      <div class="stats-container">
+        <div class="stat-item">
+          <div class="stat-label">AI Usage Attempts:</div>
+          <div class="stat-value" id="ai-usage-count">0</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Thought First:</div>
+          <div class="stat-value" id="thought-first-count">0</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Bypassed Check:</div>
+          <div class="stat-value" id="bypass-count">0</div>
+        </div>
+      </div>
+      
+      <div class="ratio" id="success-ratio">
+        You thought first on 0% of your AI interactions
+      </div>
+      
+      <button class="reset-button" id="reset-stats">Reset Stats</button>
     </div>
-    <div class="stat-item">
-      <div class="stat-label">Bypassed Check:</div>
-      <div class="stat-value" id="bypass-count">0</div>
+    
+    <div id="social-media" class="tab-content">
+      <h2>Social Media Limits</h2>
+      
+      <div class="setting-item">
+        <label class="checkbox-label">
+          <input type="checkbox" id="linkedin-enabled" checked>
+          <span>Enable LinkedIn limits</span>
+        </label>
+        
+        <div class="setting-control">
+          <label class="setting-label">Allowed time (24h format):</label>
+          <select id="linkedin-hour">
+            <option value="0">12 AM</option>
+            <option value="8">8 AM</option>
+            <option value="9">9 AM</option>
+            <option value="10">10 AM</option>
+            <option value="11">11 AM</option>
+            <option value="12">12 PM</option>
+            <option value="13">1 PM</option>
+            <option value="14">2 PM</option>
+            <option value="15" selected>3 PM</option>
+            <option value="16">4 PM</option>
+            <option value="17">5 PM</option>
+            <option value="18">6 PM</option>
+            <option value="19">7 PM</option>
+            <option value="20">8 PM</option>
+            <option value="21">9 PM</option>
+            <option value="22">10 PM</option>
+            <option value="23">11 PM</option>
+          </select>
+        </div>
+      </div>
+      
+      <div class="setting-item">
+        <label class="checkbox-label">
+          <input type="checkbox" id="twitter-enabled" checked>
+          <span>Enable Twitter limits</span>
+        </label>
+        
+        <div class="setting-control">
+          <label class="setting-label">Allowed time (24h format):</label>
+          <select id="twitter-hour">
+            <option value="0">12 AM</option>
+            <option value="8">8 AM</option>
+            <option value="9">9 AM</option>
+            <option value="10">10 AM</option>
+            <option value="11">11 AM</option>
+            <option value="12">12 PM</option>
+            <option value="13">1 PM</option>
+            <option value="14">2 PM</option>
+            <option value="15" selected>3 PM</option>
+            <option value="16">4 PM</option>
+            <option value="17">5 PM</option>
+            <option value="18">6 PM</option>
+            <option value="19">7 PM</option>
+            <option value="20">8 PM</option>
+            <option value="21">9 PM</option>
+            <option value="22">10 PM</option>
+            <option value="23">11 PM</option>
+          </select>
+        </div>
+      </div>
+      
+      <button class="reset-button" id="reset-social-visits">Reset Today's Visits</button>
+      <button class="reset-button" id="save-social-settings">Save Settings</button>
     </div>
   </div>
-  
-  <div class="ratio" id="success-ratio">
-    You thought first on 0% of your AI interactions
-  </div>
-  
-  <button class="reset-button" id="reset-stats">Reset Stats</button>
   
   <script src="popup.js"></script>
 </body>

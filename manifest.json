@@ -13,7 +13,13 @@
         "https://poe.com/*",
         "https://gemini.google.com/*",
         "https://www.typingmind.com/*",
-        "https://chatgpt.com/*"
+        "https://chatgpt.com/*",
+        "https://lex.page/*",
+        "https://*.linkedin.com/*",
+        "https://linkedin.com/*",
+        "https://*.twitter.com/*",
+        "https://twitter.com/*",
+        "https://x.com/*"
       ],
       "js": ["content.js"],
       "css": ["styles.css"]

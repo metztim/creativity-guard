@@ -159,6 +159,11 @@ const siteConfigs = {
     inputSelector: '#prompt-textarea',
     newChatSelector: 'nav a',
     observeTarget: 'body'
+  },
+  'lex.page': {
+    inputSelector: '[data-placeholder="How can I help with your writing today?"]',
+    newChatSelector: '.cursor-pointer',
+    observeTarget: 'body'
   }
 };
 
@@ -287,4 +292,191 @@ try {
   }
 } catch (e) {
   console.error('Error in main extension code:', e);
+}
+
+// Social media module for LinkedIn and Twitter
+const socialMediaModule = {
+  // Storage for social media stats and settings
+  storage: {
+    get: function(callback) {
+      try {
+        chrome.storage.local.get(['socialMediaUsage'], function(result) {
+          if (chrome.runtime.lastError) {
+            console.error('Social media storage get error:', chrome.runtime.lastError);
+            callback(null);
+            return;
+          }
+          callback(result.socialMediaUsage);
+        });
+      } catch (e) {
+        console.error('Social media storage get error:', e);
+        callback(null);
+      }
+    },
+    set: function(value, callback) {
+      try {
+        chrome.storage.local.set({socialMediaUsage: value}, function() {
+          if (chrome.runtime.lastError) {
+            console.error('Social media storage set error:', chrome.runtime.lastError);
+            if (callback) callback(false);
+            return;
+          }
+          if (callback) callback(true);
+        });
+      } catch (e) {
+        console.error('Social media storage set error:', e);
+        if (callback) callback(false);
+      }
+    }
+  },
+  
+  // Default settings
+  defaultSettings: {
+    linkedinAllowedHour: 15, // 3 PM
+    twitterAllowedHour: 15, // 3 PM
+    enabledForLinkedin: true,
+    enabledForTwitter: true,
+    visits: {} // Will store dates of visits
+  },
+  
+  // Current settings
+  settings: null,
+  
+  // Initialize the module
+  init: function() {
+    // Load settings
+    this.loadSettings();
+    
+    // Check if we're on a social media site
+    if (window.location.hostname.includes('linkedin.com')) {
+      this.handleSocialMediaSite('linkedin');
+    } else if (window.location.hostname.includes('twitter.com') || window.location.hostname.includes('x.com')) {
+      this.handleSocialMediaSite('twitter');
+    }
+  },
+  
+  // Load settings from storage
+  loadSettings: function() {
+    this.storage.get((settings) => {
+      this.settings = settings || this.defaultSettings;
+      // Make sure the visits object exists
+      if (!this.settings.visits) {
+        this.settings.visits = {};
+      }
+    });
+  },
+  
+  // Get today's date as a string (YYYY-MM-DD)
+  getTodayString: function() {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  },
+  
+  // Check if current time is allowed for the platform
+  isTimeAllowed: function(platform) {
+    const now = new Date();
+    const hour = now.getHours();
+    const allowedHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour : this.settings.twitterAllowedHour;
+    
+    return hour >= allowedHour;
+  },
+  
+  // Check if already visited today
+  hasVisitedToday: function(platform) {
+    const todayStr = this.getTodayString();
+    return this.settings.visits[platform] && this.settings.visits[platform] === todayStr;
+  },
+  
+  // Record a visit
+  recordVisit: function(platform) {
+    const todayStr = this.getTodayString();
+    this.settings.visits[platform] = todayStr;
+    this.storage.set(this.settings);
+  },
+  
+  // Handle social media site visit
+  handleSocialMediaSite: function(platform) {
+    // Check if the feature is enabled for this platform
+    const isEnabled = platform === 'linkedin' ? this.settings.enabledForLinkedin : this.settings.enabledForTwitter;
+    if (!isEnabled) return;
+    
+    // Check time and previous visits
+    const isAllowedTime = this.isTimeAllowed(platform);
+    const hasVisited = this.hasVisitedToday(platform);
+    
+    if (!isAllowedTime || hasVisited) {
+      this.showSocialMediaModal(platform, isAllowedTime, hasVisited);
+    } else {
+      // If all checks pass, record this visit
+      this.recordVisit(platform);
+    }
+  },
+  
+  // Show social media restriction modal
+  showSocialMediaModal: function(platform, isAllowedTime, hasVisited) {
+    try {
+      // Check if modal already exists
+      if (document.getElementById('social-media-guard-modal')) {
+        return;
+      }
+      
+      // Create modal container
+      const modal = document.createElement('div');
+      modal.id = 'social-media-guard-modal';
+      
+      // Determine message based on restriction reason
+      let message = '';
+      const platformName = platform.charAt(0).toUpperCase() + platform.slice(1);
+      const allowedHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour : this.settings.twitterAllowedHour;
+      
+      if (!isAllowedTime && hasVisited) {
+        message = `You've already visited ${platformName} today, and it's before your allowed time (${allowedHour}:00).`;
+      } else if (!isAllowedTime) {
+        message = `It's before your allowed ${platformName} time (${allowedHour}:00).`;
+      } else if (hasVisited) {
+        message = `You've already visited ${platformName} today.`;
+      }
+      
+      // Set modal content
+      modal.innerHTML = `
+        <div class="creativity-guard-content">
+          <h2>Digital Wellbeing Check</h2>
+          <p>${message}</p>
+          <p><strong>Would you like to continue anyway?</strong></p>
+          <div class="creativity-guard-buttons">
+            <button id="social-media-proceed">Yes, continue</button>
+            <button id="social-media-skip">No, close site</button>
+          </div>
+        </div>
+      `;
+      
+      // Add to page
+      document.body.appendChild(modal);
+      
+      // Set up button handlers
+      document.getElementById('social-media-proceed').addEventListener('click', () => {
+        // If proceeding, record the visit
+        this.recordVisit(platform);
+        modal.remove();
+      });
+      
+      document.getElementById('social-media-skip').addEventListener('click', () => {
+        // Close the tab or navigate away
+        window.location.href = 'https://google.com';
+      });
+    } catch (e) {
+      console.error('Error showing social media modal:', e);
+    }
+  }
+};
+
+// Initialize social media module for relevant sites
+try {
+  if (window.location.hostname.includes('linkedin.com') || 
+      window.location.hostname.includes('twitter.com') || 
+      window.location.hostname.includes('x.com')) {
+    socialMediaModule.init();
+  }
+} catch (e) {
+  console.error('Error initializing social media module:', e);
 } 
