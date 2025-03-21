@@ -344,15 +344,22 @@ const socialMediaModule = {
   
   // Initialize the module
   init: function() {
-    // Load settings
-    this.loadSettings();
-    
-    // Check if we're on a social media site
-    if (window.location.hostname.includes('linkedin.com')) {
-      this.handleSocialMediaSite('linkedin');
-    } else if (window.location.hostname.includes('twitter.com') || window.location.hostname.includes('x.com')) {
-      this.handleSocialMediaSite('twitter');
-    }
+    // Load settings and then handle the site visit after settings are loaded
+    this.storage.get((settings) => {
+      this.settings = settings || this.defaultSettings;
+      
+      // Make sure the visits object exists
+      if (!this.settings.visits) {
+        this.settings.visits = {};
+      }
+      
+      // Now that settings are loaded, check if we're on a social media site
+      if (window.location.hostname.includes('linkedin.com')) {
+        this.handleSocialMediaSite('linkedin');
+      } else if (window.location.hostname.includes('twitter.com') || window.location.hostname.includes('x.com')) {
+        this.handleSocialMediaSite('twitter');
+      }
+    });
   },
   
   // Load settings from storage
