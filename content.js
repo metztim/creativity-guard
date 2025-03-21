@@ -7,24 +7,63 @@ const suggestions = [
   "Write down the problem you're trying to solve in your own words."
 ];
 
-// Stats tracking
+// Stats tracking with default values
 let stats = {
   aiUsageCount: 0,
   bypassCount: 0,
   thoughtFirstCount: 0
 };
 
-// Load saved stats
-chrome.storage.local.get(['creativityGuardStats'], function(result) {
-  if (result.creativityGuardStats) {
-    stats = result.creativityGuardStats;
+// Safe wrapper for chrome.storage operations
+const storage = {
+  get: function(callback) {
+    try {
+      chrome.storage.local.get(['creativityGuardStats'], function(result) {
+        if (chrome.runtime.lastError) {
+          console.error('Storage get error:', chrome.runtime.lastError);
+          callback(null);
+          return;
+        }
+        callback(result.creativityGuardStats);
+      });
+    } catch (e) {
+      console.error('Storage get error:', e);
+      callback(null);
+    }
+  },
+  set: function(value, callback) {
+    try {
+      chrome.storage.local.set({creativityGuardStats: value}, function() {
+        if (chrome.runtime.lastError) {
+          console.error('Storage set error:', chrome.runtime.lastError);
+          if (callback) callback(false);
+          return;
+        }
+        if (callback) callback(true);
+      });
+    } catch (e) {
+      console.error('Storage set error:', e);
+      if (callback) callback(false);
+    }
   }
-});
+};
+
+// Load saved stats
+function loadStats() {
+  storage.get(function(savedStats) {
+    if (savedStats) {
+      stats = savedStats;
+    }
+  });
+}
 
 // Save stats
 function saveStats() {
-  chrome.storage.local.set({creativityGuardStats: stats});
+  storage.set(stats);
 }
+
+// Initialize stats
+loadStats();
 
 // Get a random suggestion
 function getRandomSuggestion() {
@@ -33,51 +72,55 @@ function getRandomSuggestion() {
 
 // Create and show the modal
 function showReflectionModal() {
-  // Check if modal already exists
-  if (document.getElementById('creativity-guard-modal')) {
-    return;
-  }
-  
-  // Create modal container
-  const modal = document.createElement('div');
-  modal.id = 'creativity-guard-modal';
-  
-  // Random suggestion
-  const suggestion = getRandomSuggestion();
-  
-  // Set modal content
-  modal.innerHTML = `
-    <div class="creativity-guard-content">
-      <h2>Wait a Moment</h2>
-      <p>It looks like you're about to ask AI for help.</p>
-      <p><strong>Have you spent two minutes brainstorming or writing down your own ideas first?</strong></p>
-      <p class="creativity-guard-suggestion">${suggestion}</p>
-      <div class="creativity-guard-buttons">
-        <button id="creativity-guard-proceed">I did my own thinking: Proceed</button>
-        <button id="creativity-guard-skip">Skip this check</button>
+  try {
+    // Check if modal already exists
+    if (document.getElementById('creativity-guard-modal')) {
+      return;
+    }
+    
+    // Create modal container
+    const modal = document.createElement('div');
+    modal.id = 'creativity-guard-modal';
+    
+    // Random suggestion
+    const suggestion = getRandomSuggestion();
+    
+    // Set modal content
+    modal.innerHTML = `
+      <div class="creativity-guard-content">
+        <h2>Wait a Moment</h2>
+        <p>It looks like you're about to ask AI for help.</p>
+        <p><strong>Have you spent two minutes brainstorming or writing down your own ideas first?</strong></p>
+        <p class="creativity-guard-suggestion">${suggestion}</p>
+        <div class="creativity-guard-buttons">
+          <button id="creativity-guard-proceed">I did my own thinking: Proceed</button>
+          <button id="creativity-guard-skip">Skip this check</button>
+        </div>
       </div>
-    </div>
-  `;
-  
-  // Add to page
-  document.body.appendChild(modal);
-  
-  // Set up button handlers
-  document.getElementById('creativity-guard-proceed').addEventListener('click', function() {
-    stats.thoughtFirstCount++;
+    `;
+    
+    // Add to page
+    document.body.appendChild(modal);
+    
+    // Set up button handlers
+    document.getElementById('creativity-guard-proceed').addEventListener('click', function() {
+      stats.thoughtFirstCount++;
+      saveStats();
+      modal.remove();
+    });
+    
+    document.getElementById('creativity-guard-skip').addEventListener('click', function() {
+      stats.bypassCount++;
+      saveStats();
+      modal.remove();
+    });
+    
+    // Increment AI usage attempt counter
+    stats.aiUsageCount++;
     saveStats();
-    modal.remove();
-  });
-  
-  document.getElementById('creativity-guard-skip').addEventListener('click', function() {
-    stats.bypassCount++;
-    saveStats();
-    modal.remove();
-  });
-  
-  // Increment AI usage attempt counter
-  stats.aiUsageCount++;
-  saveStats();
+  } catch (e) {
+    console.error('Error showing modal:', e);
+  }
 }
 
 // Site-specific selectors for input areas
@@ -119,71 +162,129 @@ const siteConfigs = {
   }
 };
 
-// Determine which site we're on
-const currentSite = Object.keys(siteConfigs).find(site => window.location.hostname.includes(site));
-const config = currentSite ? siteConfigs[currentSite] : null;
+try {
+  // Determine which site we're on
+  const currentSite = Object.keys(siteConfigs).find(site => window.location.hostname.includes(site));
+  const config = currentSite ? siteConfigs[currentSite] : null;
 
-if (config) {
-  // Flag to track if modal has been shown in this session
-  let modalShownThisSession = false;
-  
-  // Function to set up input monitoring
-  function setupInputMonitoring() {
-    const inputElements = document.querySelectorAll(config.inputSelector);
-    console.log('Found input elements:', inputElements.length);
+  if (config) {
+    // Track chats where modal has been shown
+    const shownInChats = new Set();
     
-    inputElements.forEach(inputElement => {
-      if (!inputElement.hasAttribute('creativity-guard-monitored')) {
-        // Mark this element as monitored
-        inputElement.setAttribute('creativity-guard-monitored', 'true');
-        console.log('Monitoring element:', inputElement);
-        
-        // Show modal when user interacts with input
-        const showModalIfNeeded = () => {
-          if (!modalShownThisSession) {
-            console.log('Showing modal');
-            showReflectionModal();
-            modalShownThisSession = true;
-          }
-        };
-        
-        // Multiple event listeners for different types of interaction
-        inputElement.addEventListener('focus', showModalIfNeeded);
-        inputElement.addEventListener('click', showModalIfNeeded);
-        inputElement.addEventListener('input', showModalIfNeeded);
+    // Function to get current chat ID
+    function getCurrentChatId() {
+      try {
+        // For ChatGPT, use the conversation ID from URL
+        if (currentSite === 'chat.openai.com') {
+          const match = window.location.pathname.match(/\/c\/([\w-]+)/);
+          return match ? match[1] : window.location.pathname;
+        }
+        // For other platforms, use the full pathname as the ID
+        return window.location.pathname;
+      } catch (e) {
+        console.error('Error getting chat ID:', e);
+        return window.location.pathname;
       }
-    });
+    }
     
-    // Reset modal flag when starting a new chat
-    const newChatElements = document.querySelectorAll(config.newChatSelector);
-    newChatElements.forEach(element => {
-      element.addEventListener('click', function() {
-        setTimeout(() => {
-          console.log('Resetting modal flag');
-          modalShownThisSession = false;
-        }, 1000);
-      });
-    });
-  }
-  
-  // Check for input element immediately
-  setupInputMonitoring();
-  
-  // Set up observer to monitor for changes
-  const observer = new MutationObserver(function(mutations) {
+    // Function to check if this is a new chat context
+    function isNewChatContext() {
+      try {
+        const inputElements = document.querySelectorAll(config.inputSelector);
+        let currentInputContent = '';
+        
+        // Get current input content
+        inputElements.forEach(input => {
+          currentInputContent += input.value || input.textContent || '';
+        });
+        
+        // Check if input was cleared (new chat started)
+        return currentInputContent === '';
+      } catch (e) {
+        console.error('Error checking chat context:', e);
+        return false;
+      }
+    }
+    
+    // Function to set up input monitoring
+    function setupInputMonitoring() {
+      try {
+        const inputElements = document.querySelectorAll(config.inputSelector);
+        
+        inputElements.forEach(inputElement => {
+          if (!inputElement.hasAttribute('creativity-guard-monitored')) {
+            // Mark this element as monitored
+            inputElement.setAttribute('creativity-guard-monitored', 'true');
+            
+            // Show modal only when user starts typing
+            const showModalIfNeeded = (event) => {
+              try {
+                // Only proceed if this is an input event (typing)
+                if (event.type !== 'input') return;
+                
+                const chatId = getCurrentChatId();
+                
+                // If we've already shown the modal in this chat, don't show it again
+                if (shownInChats.has(chatId)) return;
+                
+                // Show modal if user is typing and we haven't shown it in this chat
+                if (inputElement.value || inputElement.textContent) {
+                  showReflectionModal();
+                  shownInChats.add(chatId);
+                }
+              } catch (e) {
+                console.error('Error in showModalIfNeeded:', e);
+              }
+            };
+            
+            // Only listen for input events (typing)
+            inputElement.addEventListener('input', showModalIfNeeded);
+          }
+        });
+      } catch (e) {
+        console.error('Error in setupInputMonitoring:', e);
+      }
+    }
+    
+    // Check for input element immediately
     setupInputMonitoring();
-  });
-  
-  // Start observing with more specific options
-  const observeTarget = document.querySelector(config.observeTarget);
-  if (observeTarget) {
-    observer.observe(observeTarget, { 
-      childList: true, 
-      subtree: true,
-      attributes: true
-    });
+    
+    // Set up observer to monitor for changes
+    try {
+      const observer = new MutationObserver(function(mutations) {
+        setupInputMonitoring();
+      });
+      
+      // Start observing with more specific options
+      const observeTarget = document.querySelector(config.observeTarget);
+      if (observeTarget) {
+        observer.observe(observeTarget, { 
+          childList: true, 
+          subtree: true,
+          attributes: true,
+          characterData: true
+        });
+      }
+    } catch (e) {
+      console.error('Error setting up observer:', e);
+    }
+    
+    // Additional periodic check for dynamically loaded elements
+    setInterval(setupInputMonitoring, 2000);
+    
+    // Watch for navigation events to handle SPA navigation
+    try {
+      window.addEventListener('popstate', function() {
+        const chatId = getCurrentChatId();
+        if (!shownInChats.has(chatId)) {
+          // Reset for new chat
+          shownInChats.delete(chatId);
+        }
+      });
+    } catch (e) {
+      console.error('Error setting up navigation listener:', e);
+    }
   }
-  
-  // Additional periodic check for dynamically loaded elements
-  setInterval(setupInputMonitoring, 2000);
+} catch (e) {
+  console.error('Error in main extension code:', e);
 } 
