@@ -269,12 +269,18 @@ function showReflectionModal() {
     // Different positioning based on the site
     if (currentSite === 'chat.openai.com' || currentSite === 'chatgpt.com') {
       // ChatGPT has a specific layout
-      const formParent = inputElement.closest('form');
-      if (formParent && formParent.parentNode) {
+      const formParent = inputElement.closest('form') || inputElement.closest('div[role="presentation"]');
+      if (formParent) {
         formParent.parentNode.insertBefore(host, formParent);
       } else {
         // Fallback insertion
-        inputElement.parentNode.insertBefore(host, inputElement);
+        const container = document.querySelector('[data-testid="conversation-turn-anchor"]');
+        if (container) {
+          container.parentNode.insertBefore(host, container);
+        } else {
+          // Last resort fallback
+          inputElement.parentNode.insertBefore(host, inputElement);
+        }
       }
     } else if (currentSite === 'claude.ai') {
       // Claude has a specific layout
@@ -301,7 +307,11 @@ function showReflectionModal() {
 // Site-specific selectors for input areas
 const siteConfigs = {
   'chat.openai.com': {
-    inputSelector: '#prompt-textarea',
+    inputSelector: '#prompt-textarea, .w-full.resize-none.focus-within\\:border-0',
+    checkFunc: function(event) {
+      // For ChatGPT we want to check when the textarea gets focus or when a key is pressed
+      return event.type === 'focus' || event.type === 'keydown';
+    },
     newChatSelector: 'nav a',
     observeTarget: 'body'
   },
@@ -331,7 +341,11 @@ const siteConfigs = {
     observeTarget: 'body'
   },
   'chatgpt.com': {
-    inputSelector: '#prompt-textarea',
+    inputSelector: '#prompt-textarea, .w-full.resize-none.focus-within\\:border-0',
+    checkFunc: function(event) {
+      // Same as chat.openai.com
+      return event.type === 'focus' || event.type === 'keydown';
+    },
     newChatSelector: 'nav a',
     observeTarget: 'body'
   },
