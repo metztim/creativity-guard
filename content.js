@@ -588,6 +588,13 @@ const socialMediaModule = {
     });
   },
   
+  // Check if it's a weekend (Saturday or Sunday)
+  isWeekend: function() {
+    const today = new Date();
+    const day = today.getDay(); // 0 is Sunday, 6 is Saturday
+    return day === 0 || day === 6;
+  },
+  
   // Handle social media site visit
   handleSocialMediaSite: function(platform) {
     try {
@@ -599,14 +606,18 @@ const socialMediaModule = {
       
       if (!isEnabled) return;
       
+      // Check if it's a weekend
+      const isWeekendDay = this.isWeekend();
+      console.log(`%c[Creativity Guard] Is weekend:`, 'color: #0a66c2;', isWeekendDay);
+      
       // Check time and previous visits
       const isAllowedTime = this.isTimeAllowed(platform);
       const hasVisited = this.hasVisitedToday(platform);
       console.log(`%c[Creativity Guard] Time allowed: ${isAllowedTime}, Has visited today: ${hasVisited}`, 'color: #0a66c2;');
       
-      if (!isAllowedTime || hasVisited) {
+      if (isWeekendDay || !isAllowedTime || hasVisited) {
         console.log('%c[Creativity Guard] Showing restriction modal', 'color: #0a66c2;');
-        this.showSocialMediaModal(platform, isAllowedTime, hasVisited);
+        this.showSocialMediaModal(platform, isAllowedTime, hasVisited, isWeekendDay);
       } else {
         console.log('%c[Creativity Guard] Recording first visit', 'color: #0a66c2;');
         this.recordVisit(platform);
@@ -617,10 +628,10 @@ const socialMediaModule = {
   },
   
   // Show social media restriction modal
-  showSocialMediaModal: function(platform, isAllowedTime, hasVisited) {
+  showSocialMediaModal: function(platform, isAllowedTime, hasVisited, isWeekend) {
     try {
       // Check if modal already exists
-      if (document.getElementById('social-media-guard-modal')) {
+      if (document.getElementById('social-media-guard-host')) {
         return;
       }
       
@@ -707,7 +718,9 @@ const socialMediaModule = {
       const platformName = platform.charAt(0).toUpperCase() + platform.slice(1);
       const allowedHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour : this.settings.twitterAllowedHour;
       
-      if (!isAllowedTime && hasVisited) {
+      if (isWeekend) {
+        messageText = `${platformName} is blocked on weekends to promote digital wellbeing.`;
+      } else if (!isAllowedTime && hasVisited) {
         messageText = `You've already visited ${platformName} today, and it's before your allowed time (${allowedHour}:00).`;
       } else if (!isAllowedTime) {
         messageText = `It's before your allowed ${platformName} time (${allowedHour}:00).`;
@@ -760,7 +773,7 @@ const socialMediaModule = {
       // Add to page
       document.body.appendChild(host);
     } catch (e) {
-      console.error('Error showing social media modal:', e);
+      console.error('%c[Creativity Guard] Error showing social media modal:', 'color: #ff0000;', e);
     }
   }
 };
