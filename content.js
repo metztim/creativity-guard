@@ -18,6 +18,12 @@ let stats = {
 const storage = {
   get: function(callback) {
     try {
+      if (!chrome.runtime?.id) {
+        console.warn('Extension context invalid, storage.get operation cancelled');
+        callback(null);
+        return;
+      }
+      
       chrome.storage.local.get(['creativityGuardStats'], function(result) {
         if (chrome.runtime.lastError) {
           console.error('Storage get error:', chrome.runtime.lastError);
@@ -33,6 +39,12 @@ const storage = {
   },
   set: function(value, callback) {
     try {
+      if (!chrome.runtime?.id) {
+        console.warn('Extension context invalid, storage.set operation cancelled');
+        if (callback) callback(false);
+        return;
+      }
+      
       chrome.storage.local.set({creativityGuardStats: value}, function() {
         if (chrome.runtime.lastError) {
           console.error('Storage set error:', chrome.runtime.lastError);
@@ -262,24 +274,36 @@ function showReflectionModal() {
     shadow.appendChild(reminder);
     
     // Position and append the reminder to the page
-    host.style.position = 'absolute';
+    host.style.position = 'relative';
     host.style.width = `${inputElement.offsetWidth}px`;
     host.style.zIndex = '9999';
+    host.style.marginBottom = '10px';
     
     // Different positioning based on the site
     if (currentSite === 'chat.openai.com' || currentSite === 'chatgpt.com') {
       // ChatGPT has a specific layout
-      const formParent = inputElement.closest('form') || inputElement.closest('div[role="presentation"]');
+      const formParent = inputElement.closest('form');
       if (formParent) {
-        formParent.parentNode.insertBefore(host, formParent);
+        const formWrapper = formParent.parentElement;
+        if (formWrapper) {
+          formWrapper.style.position = 'relative';
+          formWrapper.insertBefore(host, formParent);
+        } else {
+          formParent.insertBefore(host, formParent.firstChild);
+        }
       } else {
         // Fallback insertion
-        const container = document.querySelector('[data-testid="conversation-turn-anchor"]');
+        const container = inputElement.closest('div[role="presentation"]');
         if (container) {
-          container.parentNode.insertBefore(host, container);
+          container.style.position = 'relative';
+          container.insertBefore(host, container.firstChild);
         } else {
           // Last resort fallback
-          inputElement.parentNode.insertBefore(host, inputElement);
+          const parent = inputElement.parentElement;
+          if (parent) {
+            parent.style.position = 'relative';
+            parent.insertBefore(host, inputElement);
+          }
         }
       }
     } else if (currentSite === 'claude.ai') {
@@ -352,6 +376,11 @@ const siteConfigs = {
   'lex.page': {
     inputSelector: '[data-placeholder="How can I help with your writing today?"]',
     newChatSelector: '.cursor-pointer',
+    observeTarget: 'body'
+  },
+  'facebook.com': {
+    inputSelector: '[contenteditable="true"]',
+    newChatSelector: 'a',
     observeTarget: 'body'
   }
 };
@@ -483,22 +512,54 @@ try {
   console.error('Error in main extension code:', e);
 }
 
-// Social media module for LinkedIn and Twitter
+// Social media module for LinkedIn, Twitter, and Facebook
 const socialMediaModule = {
   // Storage for social media stats and settings
   storage: {
     get: function(callback) {
-      chrome.runtime.sendMessage({ type: 'GET_SOCIAL_MEDIA_SETTINGS' }, (response) => {
-        callback(response);
-      });
+      try {
+        if (!chrome.runtime?.id) {
+          console.warn('Extension context invalid, social media storage.get operation cancelled');
+          callback(null);
+          return;
+        }
+        
+        chrome.runtime.sendMessage({ type: 'GET_SOCIAL_MEDIA_SETTINGS' }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.error('Social media storage get error:', chrome.runtime.lastError);
+            callback(null);
+            return;
+          }
+          callback(response);
+        });
+      } catch (e) {
+        console.error('Social media storage get error:', e);
+        callback(null);
+      }
     },
     set: function(value, callback) {
-      chrome.runtime.sendMessage({ 
-        type: 'SET_SOCIAL_MEDIA_SETTINGS',
-        settings: value
-      }, (response) => {
-        if (callback) callback(response && response.success);
-      });
+      try {
+        if (!chrome.runtime?.id) {
+          console.warn('Extension context invalid, social media storage.set operation cancelled');
+          if (callback) callback(false);
+          return;
+        }
+        
+        chrome.runtime.sendMessage({ 
+          type: 'SET_SOCIAL_MEDIA_SETTINGS',
+          settings: value
+        }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.error('Social media storage set error:', chrome.runtime.lastError);
+            if (callback) callback(false);
+            return;
+          }
+          if (callback) callback(response && response.success);
+        });
+      } catch (e) {
+        console.error('Social media storage set error:', e);
+        if (callback) callback(false);
+      }
     }
   },
   
@@ -506,8 +567,10 @@ const socialMediaModule = {
   defaultSettings: {
     linkedinAllowedHour: 15, // 3 PM
     twitterAllowedHour: 15, // 3 PM
+    facebookAllowedHour: 15, // 3 PM
     enabledForLinkedin: true,
     enabledForTwitter: true,
+    enabledForFacebook: true,
     visits: {} // Will store dates of visits
   },
   
@@ -517,7 +580,8 @@ const socialMediaModule = {
   // Session consent tracking (resets when browser is closed)
   sessionConsent: {
     linkedin: false,
-    twitter: false
+    twitter: false,
+    facebook: false
   },
   
   // Initialize the module
@@ -555,6 +619,9 @@ const socialMediaModule = {
         } else if (window.location.hostname.includes('twitter.com') || window.location.hostname.includes('x.com')) {
           console.log('%c[Creativity Guard] On Twitter, handling site visit', 'color: #0a66c2;');
           this.handleSocialMediaSite('twitter');
+        } else if (window.location.hostname.includes('facebook.com')) {
+          console.log('%c[Creativity Guard] On Facebook, handling site visit', 'color: #0a66c2;');
+          this.handleSocialMediaSite('facebook');
         }
       } catch (error) {
         console.error('%c[Creativity Guard] Error in init:', 'color: #ff0000;', error);
@@ -583,7 +650,7 @@ const socialMediaModule = {
   isTimeAllowed: function(platform) {
     const now = new Date();
     const hour = now.getHours();
-    const allowedHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour : this.settings.twitterAllowedHour;
+    const allowedHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour : platform === 'twitter' ? this.settings.twitterAllowedHour : this.settings.facebookAllowedHour;
     
     return hour >= allowedHour;
   },
@@ -621,7 +688,7 @@ const socialMediaModule = {
       console.log(`%c[Creativity Guard] Handling ${platform} visit`, 'color: #0a66c2;');
       
       // Check if the feature is enabled for this platform
-      const isEnabled = platform === 'linkedin' ? this.settings.enabledForLinkedin : this.settings.enabledForTwitter;
+      const isEnabled = platform === 'linkedin' ? this.settings.enabledForLinkedin : platform === 'twitter' ? this.settings.enabledForTwitter : this.settings.enabledForFacebook;
       console.log(`%c[Creativity Guard] Feature enabled for ${platform}:`, 'color: #0a66c2;', isEnabled);
       
       if (!isEnabled) return;
@@ -676,52 +743,66 @@ const socialMediaModule = {
       style.textContent = `
         #modal {
           position: fixed;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
           background: white;
-          padding: 20px;
-          border-radius: 8px;
-          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+          padding: 40px;
           z-index: 999999;
-          max-width: 500px;
-          width: 90%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
         }
         .content {
           font-family: system-ui, -apple-system, sans-serif;
+          max-width: 500px;
+          width: 100%;
+          text-align: center;
         }
         h2 {
           margin-top: 0;
           color: #333;
+          font-size: 24px;
+          margin-bottom: 20px;
+        }
+        p {
+          font-size: 16px;
+          line-height: 1.5;
+          margin-bottom: 16px;
         }
         .buttons {
           display: flex;
           gap: 10px;
-          margin-top: 20px;
+          margin-top: 30px;
+          justify-content: center;
         }
         button {
-          padding: 8px 16px;
+          padding: 12px 24px;
           border: none;
-          border-radius: 4px;
+          border-radius: 6px;
           cursor: pointer;
-          font-size: 14px;
+          font-size: 16px;
+          font-weight: 500;
+          transition: background-color 0.2s;
         }
         #proceed {
           background: #0a66c2;
           color: white;
         }
+        #proceed:hover {
+          background: #084e96;
+        }
         #skip {
           background: #e0e0e0;
           color: #333;
         }
+        #skip:hover {
+          background: #d0d0d0;
+        }
         #overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0.5);
-          z-index: 999998;
+          display: none;
         }
       `;
       
@@ -745,7 +826,7 @@ const socialMediaModule = {
       // Determine message based on restriction reason
       let messageText = '';
       const platformName = platform.charAt(0).toUpperCase() + platform.slice(1);
-      const allowedHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour : this.settings.twitterAllowedHour;
+      const allowedHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour : platform === 'twitter' ? this.settings.twitterAllowedHour : this.settings.facebookAllowedHour;
       
       if (isWeekend) {
         messageText = `${platformName} is blocked on weekends to promote digital wellbeing.`;
@@ -813,7 +894,8 @@ const socialMediaModule = {
 try {
   if (window.location.hostname.includes('linkedin.com') || 
       window.location.hostname.includes('twitter.com') || 
-      window.location.hostname.includes('x.com')) {
+      window.location.hostname.includes('x.com') ||
+      window.location.hostname.includes('facebook.com')) {
     socialMediaModule.init();
   }
 } catch (e) {
