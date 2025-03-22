@@ -11,6 +11,62 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Set up buttons
   setupButtons();
+
+  // Load settings when popup opens
+  chrome.storage.local.get(['socialMediaSettings'], function(result) {
+    const settings = result.socialMediaSettings || {
+      linkedinAllowedHour: 15,
+      twitterAllowedHour: 15,
+      facebookAllowedHour: 15,
+      enabledForLinkedin: true,
+      enabledForTwitter: true,
+      enabledForFacebook: true,
+      redirectUrl: 'https://read.readwise.io'
+    };
+
+    // Set initial values
+    document.getElementById('linkedinTime').value = formatTime(settings.linkedinAllowedHour);
+    document.getElementById('twitterTime').value = formatTime(settings.twitterAllowedHour);
+    document.getElementById('facebookTime').value = formatTime(settings.facebookAllowedHour);
+    document.getElementById('enableLinkedin').checked = settings.enabledForLinkedin;
+    document.getElementById('enableTwitter').checked = settings.enabledForTwitter;
+    document.getElementById('enableFacebook').checked = settings.enabledForFacebook;
+    document.getElementById('redirectUrl').value = settings.redirectUrl || 'https://read.readwise.io';
+  });
+
+  // Save settings when changed
+  const saveSettings = () => {
+    const linkedinTime = document.getElementById('linkedinTime').value;
+    const twitterTime = document.getElementById('twitterTime').value;
+    const facebookTime = document.getElementById('facebookTime').value;
+    
+    const settings = {
+      linkedinAllowedHour: parseInt(linkedinTime.split(':')[0]),
+      twitterAllowedHour: parseInt(twitterTime.split(':')[0]),
+      facebookAllowedHour: parseInt(facebookTime.split(':')[0]),
+      enabledForLinkedin: document.getElementById('enableLinkedin').checked,
+      enabledForTwitter: document.getElementById('enableTwitter').checked,
+      enabledForFacebook: document.getElementById('enableFacebook').checked,
+      redirectUrl: document.getElementById('redirectUrl').value || 'https://read.readwise.io'
+    };
+
+    chrome.storage.local.set({ socialMediaSettings: settings });
+  };
+
+  // Helper function to format time
+  function formatTime(hour) {
+    return `${hour.toString().padStart(2, '0')}:00`;
+  }
+
+  // Add event listeners
+  document.getElementById('linkedinTime').addEventListener('change', saveSettings);
+  document.getElementById('twitterTime').addEventListener('change', saveSettings);
+  document.getElementById('facebookTime').addEventListener('change', saveSettings);
+  document.getElementById('enableLinkedin').addEventListener('change', saveSettings);
+  document.getElementById('enableTwitter').addEventListener('change', saveSettings);
+  document.getElementById('enableFacebook').addEventListener('change', saveSettings);
+  document.getElementById('redirectUrl').addEventListener('change', saveSettings);
+  document.getElementById('redirectUrl').addEventListener('input', saveSettings);
 });
 
 // Handle tab switching

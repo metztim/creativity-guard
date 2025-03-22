@@ -102,6 +102,22 @@
     .checkbox-label input {
       margin-right: 8px;
     }
+    .settings-section {
+      margin-top: 20px;
+    }
+    .setting-group {
+      margin-bottom: 10px;
+    }
+    .time-setting {
+      margin-top: 5px;
+    }
+    .full-width {
+      width: 100%;
+    }
+    .helper-text {
+      font-size: 0.8em;
+      color: #718096;
+    }
   </style>
 </head>
 <body>
@@ -139,63 +155,42 @@
     <div id="social-media" class="tab-content">
       <h2>Social Media Limits</h2>
       
-      <div class="setting-item">
-        <label class="checkbox-label">
-          <input type="checkbox" id="linkedin-enabled" checked>
-          <span>Enable LinkedIn limits</span>
-        </label>
-        
-        <div class="setting-control">
-          <label class="setting-label">Allowed time (24h format):</label>
-          <select id="linkedin-hour">
-            <option value="0">12 AM</option>
-            <option value="8">8 AM</option>
-            <option value="9">9 AM</option>
-            <option value="10">10 AM</option>
-            <option value="11">11 AM</option>
-            <option value="12">12 PM</option>
-            <option value="13">1 PM</option>
-            <option value="14">2 PM</option>
-            <option value="15" selected>3 PM</option>
-            <option value="16">4 PM</option>
-            <option value="17">5 PM</option>
-            <option value="18">6 PM</option>
-            <option value="19">7 PM</option>
-            <option value="20">8 PM</option>
-            <option value="21">9 PM</option>
-            <option value="22">10 PM</option>
-            <option value="23">11 PM</option>
-          </select>
+      <div class="settings-section">
+        <h3>Social Media Settings</h3>
+        <div class="setting-group">
+          <label>
+            <input type="checkbox" id="enableLinkedin" checked>
+            Enable for LinkedIn
+          </label>
+          <div class="time-setting">
+            <label for="linkedinTime">Allowed after:</label>
+            <input type="time" id="linkedinTime" value="15:00">
+          </div>
         </div>
-      </div>
-      
-      <div class="setting-item">
-        <label class="checkbox-label">
-          <input type="checkbox" id="twitter-enabled" checked>
-          <span>Enable Twitter limits</span>
-        </label>
-        
-        <div class="setting-control">
-          <label class="setting-label">Allowed time (24h format):</label>
-          <select id="twitter-hour">
-            <option value="0">12 AM</option>
-            <option value="8">8 AM</option>
-            <option value="9">9 AM</option>
-            <option value="10">10 AM</option>
-            <option value="11">11 AM</option>
-            <option value="12">12 PM</option>
-            <option value="13">1 PM</option>
-            <option value="14">2 PM</option>
-            <option value="15" selected>3 PM</option>
-            <option value="16">4 PM</option>
-            <option value="17">5 PM</option>
-            <option value="18">6 PM</option>
-            <option value="19">7 PM</option>
-            <option value="20">8 PM</option>
-            <option value="21">9 PM</option>
-            <option value="22">10 PM</option>
-            <option value="23">11 PM</option>
-          </select>
+        <div class="setting-group">
+          <label>
+            <input type="checkbox" id="enableTwitter" checked>
+            Enable for Twitter/X
+          </label>
+          <div class="time-setting">
+            <label for="twitterTime">Allowed after:</label>
+            <input type="time" id="twitterTime" value="15:00">
+          </div>
+        </div>
+        <div class="setting-group">
+          <label>
+            <input type="checkbox" id="enableFacebook" checked>
+            Enable for Facebook
+          </label>
+          <div class="time-setting">
+            <label for="facebookTime">Allowed after:</label>
+            <input type="time" id="facebookTime" value="15:00">
+          </div>
+        </div>
+        <div class="setting-group">
+          <label for="redirectUrl">Redirect URL:</label>
+          <input type="url" id="redirectUrl" class="full-width" placeholder="https://read.readwise.io">
+          <small class="helper-text">Where to redirect when skipping social media</small>
         </div>
       </div>
       

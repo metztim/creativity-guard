@@ -18,35 +18,35 @@ let stats = {
 const storage = {
   get: function(callback) {
     try {
-      if (!chrome.runtime?.id) {
+      if (!chrome?.runtime?.id) {
         console.warn('Extension context invalid, storage.get operation cancelled');
-        callback(null);
+        if (callback) callback(null);
         return;
       }
       
       chrome.storage.local.get(['creativityGuardStats'], function(result) {
-        if (chrome.runtime.lastError) {
+        if (chrome?.runtime?.lastError) {
           console.error('Storage get error:', chrome.runtime.lastError);
-          callback(null);
+          if (callback) callback(null);
           return;
         }
-        callback(result.creativityGuardStats);
+        if (callback) callback(result.creativityGuardStats);
       });
     } catch (e) {
       console.error('Storage get error:', e);
-      callback(null);
+      if (callback) callback(null);
     }
   },
   set: function(value, callback) {
     try {
-      if (!chrome.runtime?.id) {
+      if (!chrome?.runtime?.id) {
         console.warn('Extension context invalid, storage.set operation cancelled');
         if (callback) callback(false);
         return;
       }
       
       chrome.storage.local.set({creativityGuardStats: value}, function() {
-        if (chrome.runtime.lastError) {
+        if (chrome?.runtime?.lastError) {
           console.error('Storage set error:', chrome.runtime.lastError);
           if (callback) callback(false);
           return;
@@ -99,108 +99,90 @@ function showReflectionModal() {
     const inputElement = document.querySelector(config.inputSelector);
     if (!inputElement) return;
     
-    // Create a host element for the shadow DOM
+    // Add styles to the document if they don't exist
+    if (!document.getElementById('creativity-guard-styles')) {
+      const styleSheet = document.createElement('style');
+      styleSheet.id = 'creativity-guard-styles';
+      styleSheet.textContent = `
+        #creativity-guard-reminder {
+          position: relative;
+          width: 100%;
+          margin-bottom: 10px;
+          z-index: 1000;
+        }
+        #creativity-guard-reminder .reminder {
+          background: #f8f9fa;
+          border: 1px solid #e2e8f0;
+          border-radius: 8px;
+          padding: 15px;
+          width: 100%;
+          font-family: system-ui, -apple-system, sans-serif;
+          font-size: 14px;
+          box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        #creativity-guard-reminder .reminder-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 10px;
+        }
+        #creativity-guard-reminder .reminder-title {
+          font-weight: bold;
+          color: #333;
+          margin: 0;
+        }
+        #creativity-guard-reminder .close-button {
+          background: none;
+          border: none;
+          cursor: pointer;
+          color: #888;
+          font-size: 16px;
+          padding: 4px;
+          margin: -4px;
+        }
+        #creativity-guard-reminder .reminder-content {
+          margin-bottom: 12px;
+        }
+        #creativity-guard-reminder .suggestion {
+          font-style: italic;
+          color: #666;
+          margin: 8px 0;
+          font-size: 13px;
+        }
+        #creativity-guard-reminder .buttons {
+          display: flex;
+          gap: 8px;
+        }
+        #creativity-guard-reminder button {
+          padding: 6px 12px;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 13px;
+          transition: background 0.2s;
+        }
+        #creativity-guard-reminder #proceed {
+          background: #0a66c2;
+          color: white;
+        }
+        #creativity-guard-reminder #proceed:hover {
+          background: #084e96;
+        }
+        #creativity-guard-reminder #skip {
+          background: #e0e0e0;
+          color: #333;
+        }
+        #creativity-guard-reminder #skip:hover {
+          background: #d0d0d0;
+        }
+      `;
+      document.head.appendChild(styleSheet);
+    }
+    
+    // Create reminder container
     const host = document.createElement('div');
     host.id = 'creativity-guard-reminder';
     
-    // Position the reminder relative to the input
-    const inputRect = inputElement.getBoundingClientRect();
-    
-    // Create a shadow root
-    const shadow = host.attachShadow({ mode: 'closed' });
-    
-    // Add styles
-    const style = document.createElement('style');
-    style.textContent = `
-      .reminder {
-        position: absolute;
-        background: #f8f9fa;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        padding: 10px 15px;
-        width: calc(100% - 20px);
-        max-width: 600px;
-        font-family: system-ui, -apple-system, sans-serif;
-        font-size: 14px;
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-        z-index: 999;
-        margin-bottom: 8px;
-        animation: fadeIn 0.3s ease-in-out;
-      }
-      
-      @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
-      
-      .reminder-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 5px;
-      }
-      
-      .reminder-title {
-        font-weight: bold;
-        color: #333;
-        margin: 0;
-      }
-      
-      .close-button {
-        background: none;
-        border: none;
-        cursor: pointer;
-        color: #888;
-        font-size: 16px;
-        padding: 0;
-        margin: 0;
-      }
-      
-      .reminder-content {
-        margin-bottom: 8px;
-      }
-      
-      .suggestion {
-        font-style: italic;
-        color: #666;
-        margin: 5px 0;
-        font-size: 13px;
-      }
-      
-      .buttons {
-        display: flex;
-        gap: 8px;
-      }
-      
-      button {
-        padding: 6px 12px;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 13px;
-        transition: background 0.2s;
-      }
-      
-      #proceed {
-        background: #0a66c2;
-        color: white;
-      }
-      
-      #proceed:hover {
-        background: #0955a3;
-      }
-      
-      #skip {
-        background: #e0e0e0;
-        color: #333;
-      }
-      
-      #skip:hover {
-        background: #d0d0d0;
-      }
-    `;
-    
-    // Create reminder container
     const reminder = document.createElement('div');
     reminder.className = 'reminder';
     
@@ -268,63 +250,34 @@ function showReflectionModal() {
     reminder.appendChild(header);
     reminder.appendChild(content);
     reminder.appendChild(buttonsContainer);
-    
-    // Add to shadow DOM
-    shadow.appendChild(style);
-    shadow.appendChild(reminder);
-    
-    // Position and append the reminder to the page
-    host.style.position = 'relative';
-    host.style.width = `${inputElement.offsetWidth}px`;
-    host.style.zIndex = '9999';
-    host.style.marginBottom = '10px';
+    host.appendChild(reminder);
     
     // Different positioning based on the site
     if (currentSite === 'chat.openai.com' || currentSite === 'chatgpt.com') {
-      // ChatGPT has a specific layout
-      const formParent = inputElement.closest('form');
-      if (formParent) {
-        const formWrapper = formParent.parentElement;
-        if (formWrapper) {
-          formWrapper.style.position = 'relative';
-          formWrapper.insertBefore(host, formParent);
-        } else {
-          formParent.insertBefore(host, formParent.firstChild);
-        }
+      // Find the main form container
+      const mainContainer = document.querySelector('form');
+      if (mainContainer) {
+        mainContainer.insertBefore(host, mainContainer.firstChild);
       } else {
-        // Fallback insertion
-        const container = inputElement.closest('div[role="presentation"]');
+        // Fallback to the closest parent with a role
+        const container = inputElement.closest('[role="presentation"]');
         if (container) {
-          container.style.position = 'relative';
           container.insertBefore(host, container.firstChild);
         } else {
-          // Last resort fallback
-          const parent = inputElement.parentElement;
-          if (parent) {
-            parent.style.position = 'relative';
-            parent.insertBefore(host, inputElement);
-          }
+          // Last resort: insert before the input
+          inputElement.parentElement.insertBefore(host, inputElement);
         }
       }
-    } else if (currentSite === 'claude.ai') {
-      // Claude has a specific layout
-      const containerDiv = inputElement.closest('.cl-text-container');
-      if (containerDiv) {
-        containerDiv.insertBefore(host, containerDiv.firstChild);
-      } else {
-        // Fallback insertion
-        inputElement.parentNode.insertBefore(host, inputElement);
-      }
     } else {
-      // Generic insertion before the input element
-      inputElement.parentNode.insertBefore(host, inputElement);
+      // For other sites, insert before the input
+      inputElement.parentElement.insertBefore(host, inputElement);
     }
     
     // Increment AI usage attempt counter
     stats.aiUsageCount++;
     saveStats();
   } catch (e) {
-    console.error('%c[Creativity Guard] Error showing reminder:', 'color: #ff0000;', e);
+    console.error('Error showing reminder:', e);
   }
 }
 
@@ -518,28 +471,28 @@ const socialMediaModule = {
   storage: {
     get: function(callback) {
       try {
-        if (!chrome.runtime?.id) {
+        if (!chrome?.runtime?.id) {
           console.warn('Extension context invalid, social media storage.get operation cancelled');
-          callback(null);
+          if (callback) callback(null);
           return;
         }
         
         chrome.runtime.sendMessage({ type: 'GET_SOCIAL_MEDIA_SETTINGS' }, (response) => {
-          if (chrome.runtime.lastError) {
+          if (chrome?.runtime?.lastError) {
             console.error('Social media storage get error:', chrome.runtime.lastError);
-            callback(null);
+            if (callback) callback(null);
             return;
           }
-          callback(response);
+          if (callback) callback(response);
         });
       } catch (e) {
         console.error('Social media storage get error:', e);
-        callback(null);
+        if (callback) callback(null);
       }
     },
     set: function(value, callback) {
       try {
-        if (!chrome.runtime?.id) {
+        if (!chrome?.runtime?.id) {
           console.warn('Extension context invalid, social media storage.set operation cancelled');
           if (callback) callback(false);
           return;
@@ -549,7 +502,7 @@ const socialMediaModule = {
           type: 'SET_SOCIAL_MEDIA_SETTINGS',
           settings: value
         }, (response) => {
-          if (chrome.runtime.lastError) {
+          if (chrome?.runtime?.lastError) {
             console.error('Social media storage set error:', chrome.runtime.lastError);
             if (callback) callback(false);
             return;
@@ -571,6 +524,7 @@ const socialMediaModule = {
     enabledForLinkedin: true,
     enabledForTwitter: true,
     enabledForFacebook: true,
+    redirectUrl: 'https://read.readwise.io',
     visits: {} // Will store dates of visits
   },
   
@@ -710,7 +664,7 @@ const socialMediaModule = {
       
       if (isWeekendDay || !isAllowedTime || hasVisited) {
         console.log('%c[Creativity Guard] Showing restriction modal', 'color: #0a66c2;');
-        this.showSocialMediaModal(platform, isAllowedTime, hasVisited, isWeekendDay);
+        this.showSocialMediaModal(platform);
       } else {
         console.log('%c[Creativity Guard] Recording first visit', 'color: #0a66c2;');
         this.recordVisit(platform);
@@ -724,168 +678,130 @@ const socialMediaModule = {
   },
   
   // Show social media restriction modal
-  showSocialMediaModal: function(platform, isAllowedTime, hasVisited, isWeekend) {
+  showSocialMediaModal: function(platform) {
     try {
-      // Check if modal already exists
-      if (document.getElementById('social-media-guard-host')) {
-        return;
+      // Add styles to the document if they don't exist
+      if (!document.getElementById('social-media-modal-styles')) {
+        const styleSheet = document.createElement('style');
+        styleSheet.id = 'social-media-modal-styles';
+        styleSheet.textContent = `
+          #social-media-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: white;
+            z-index: 2147483647;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          #social-media-modal .content {
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          }
+          #social-media-modal h2 {
+            font-size: 24px;
+            color: #1a1a1a;
+            margin-bottom: 20px;
+          }
+          #social-media-modal p {
+            font-size: 16px;
+            line-height: 1.5;
+            color: #4a4a4a;
+            margin-bottom: 30px;
+          }
+          #social-media-modal .buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+          }
+          #social-media-modal button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+          }
+          #social-media-modal #proceed {
+            background: #0a66c2;
+            color: white;
+          }
+          #social-media-modal #proceed:hover {
+            background: #084e96;
+          }
+          #social-media-modal #skip {
+            background: #e0e0e0;
+            color: #333;
+          }
+          #social-media-modal #skip:hover {
+            background: #d0d0d0;
+          }
+        `;
+        document.head.appendChild(styleSheet);
       }
-      
-      // Create a host element for the shadow DOM
-      const host = document.createElement('div');
-      host.id = 'social-media-guard-host';
-      
-      // Create a shadow root
-      const shadow = host.attachShadow({ mode: 'closed' });
-      
-      // Add styles
-      const style = document.createElement('style');
-      style.textContent = `
-        #modal {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: white;
-          padding: 40px;
-          z-index: 999999;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-        }
-        .content {
-          font-family: system-ui, -apple-system, sans-serif;
-          max-width: 500px;
-          width: 100%;
-          text-align: center;
-        }
-        h2 {
-          margin-top: 0;
-          color: #333;
-          font-size: 24px;
-          margin-bottom: 20px;
-        }
-        p {
-          font-size: 16px;
-          line-height: 1.5;
-          margin-bottom: 16px;
-        }
-        .buttons {
-          display: flex;
-          gap: 10px;
-          margin-top: 30px;
-          justify-content: center;
-        }
-        button {
-          padding: 12px 24px;
-          border: none;
-          border-radius: 6px;
-          cursor: pointer;
-          font-size: 16px;
-          font-weight: 500;
-          transition: background-color 0.2s;
-        }
-        #proceed {
-          background: #0a66c2;
-          color: white;
-        }
-        #proceed:hover {
-          background: #084e96;
-        }
-        #skip {
-          background: #e0e0e0;
-          color: #333;
-        }
-        #skip:hover {
-          background: #d0d0d0;
-        }
-        #overlay {
-          display: none;
-        }
-      `;
-      
-      // Create overlay
-      const overlay = document.createElement('div');
-      overlay.id = 'overlay';
-      
-      // Create modal container
+
       const modal = document.createElement('div');
-      modal.id = 'modal';
+      modal.id = 'social-media-modal';
       
-      // Create content container
       const content = document.createElement('div');
       content.className = 'content';
       
-      // Create header
-      const header = document.createElement('h2');
-      header.textContent = 'Digital Wellbeing Check';
-      content.appendChild(header);
+      const title = document.createElement('h2');
+      title.textContent = 'Mindful Social Media Usage';
       
-      // Determine message based on restriction reason
       let messageText = '';
       const platformName = platform.charAt(0).toUpperCase() + platform.slice(1);
-      const allowedHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour : platform === 'twitter' ? this.settings.twitterAllowedHour : this.settings.facebookAllowedHour;
+      const allowedHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour : 
+                         platform === 'twitter' ? this.settings.twitterAllowedHour : 
+                         this.settings.facebookAllowedHour;
       
-      if (isWeekend) {
-        messageText = `${platformName} is blocked on weekends to promote digital wellbeing.`;
-      } else if (!isAllowedTime && hasVisited) {
-        messageText = `You've already visited ${platformName} today, and it's before your allowed time (${allowedHour}:00).`;
-      } else if (!isAllowedTime) {
-        messageText = `It's before your allowed ${platformName} time (${allowedHour}:00).`;
-      } else if (hasVisited) {
-        messageText = `You've already visited ${platformName} today.`;
+      if (this.isWeekend()) {
+        messageText = `It's the weekend! Consider spending time away from ${platformName}.`;
+      } else if (!this.isAllowedTime(platform)) {
+        messageText = `${platformName} is only available after ${allowedHour}:00. Consider focusing on deep work during the morning.`;
+      } else if (this.hasVisitedToday(platform)) {
+        messageText = `You've already visited ${platformName} today. Consider limiting your social media usage.`;
       }
       
-      // Create message paragraph
       const message = document.createElement('p');
       message.textContent = messageText;
-      content.appendChild(message);
       
-      // Create question paragraph
-      const question = document.createElement('p');
-      question.innerHTML = '<strong>Would you like to continue anyway?</strong>';
-      content.appendChild(question);
+      const buttons = document.createElement('div');
+      buttons.className = 'buttons';
       
-      // Create buttons container
-      const buttonsContainer = document.createElement('div');
-      buttonsContainer.className = 'buttons';
-      
-      // Create proceed button
       const proceedButton = document.createElement('button');
       proceedButton.id = 'proceed';
-      proceedButton.textContent = 'Yes, continue';
+      proceedButton.textContent = 'Proceed Anyway';
       proceedButton.onclick = () => {
-        // Record visit and set session consent
-        this.recordVisit(platform);
         this.sessionConsent[platform] = true;
-        host.remove();
+        modal.remove();
       };
       
-      // Create skip button
       const skipButton = document.createElement('button');
       skipButton.id = 'skip';
-      skipButton.textContent = 'No, close site';
+      skipButton.textContent = 'Go to Reading';
       skipButton.onclick = () => {
-        window.location.href = 'https://google.com';
+        modal.remove();
+        window.location.href = this.settings.redirectUrl || 'https://read.readwise.io';
       };
       
-      // Add buttons to container
-      buttonsContainer.appendChild(proceedButton);
-      buttonsContainer.appendChild(skipButton);
-      content.appendChild(buttonsContainer);
+      buttons.appendChild(proceedButton);
+      buttons.appendChild(skipButton);
       
-      // Add everything to the shadow DOM
+      content.appendChild(title);
+      content.appendChild(message);
+      content.appendChild(buttons);
       modal.appendChild(content);
-      shadow.appendChild(style);
-      shadow.appendChild(overlay);
-      shadow.appendChild(modal);
       
-      // Add to page
-      document.body.appendChild(host);
+      document.body.appendChild(modal);
     } catch (e) {
-      console.error('%c[Creativity Guard] Error showing social media modal:', 'color: #ff0000;', e);
+      console.error('Error showing social media modal:', e);
     }
   }
 };
