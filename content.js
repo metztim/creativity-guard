@@ -156,22 +156,36 @@ const siteHandlers = {
       }
     },
     getInputElement: function() {
-      return document.querySelector('#prompt-textarea');
+      // Try multiple selectors for ChatGPT's input
+      const selectors = [
+        '#prompt-textarea',
+        '.w-full.resize-none.focus-within\\:border-0',
+        'textarea[placeholder*="Send a message"]'
+      ];
+      
+      for (const selector of selectors) {
+        const element = document.querySelector(selector);
+        if (element) return element;
+      }
+      return null;
     },
     monitorInput: function(callback) {
+      // Initial setup
       const textArea = this.getInputElement();
       if (textArea) {
         textArea.addEventListener('focus', callback);
         textArea.addEventListener('input', callback);
+        textArea.addEventListener('keydown', callback);
       }
       
-      // Also monitor for dynamic textarea changes
+      // Monitor for dynamic textarea changes
       const observer = new MutationObserver((mutations) => {
         const textArea = this.getInputElement();
         if (textArea && !textArea.hasAttribute('creativity-guard-monitored')) {
           textArea.setAttribute('creativity-guard-monitored', 'true');
           textArea.addEventListener('focus', callback);
           textArea.addEventListener('input', callback);
+          textArea.addEventListener('keydown', callback);
         }
       });
       
@@ -214,13 +228,25 @@ const siteHandlers = {
       return false;
     },
     getInputElement: function() {
-      return document.querySelector('.cm-content');
+      // Try multiple selectors for Typingmind's input
+      const selectors = [
+        '.cm-content',
+        '.cm-line',
+        '.cm-editor'
+      ];
+      
+      for (const selector of selectors) {
+        const element = document.querySelector(selector);
+        if (element) return element;
+      }
+      return null;
     },
     monitorInput: function(callback) {
       const input = this.getInputElement();
       if (input) {
         input.addEventListener('focus', callback);
         input.addEventListener('input', callback);
+        input.addEventListener('keydown', callback);
         
         // Also monitor the editor container for clicks
         const editorContainer = input.closest('.cm-editor');
@@ -228,6 +254,22 @@ const siteHandlers = {
           editorContainer.addEventListener('click', callback);
         }
       }
+      
+      // Monitor for dynamic editor changes
+      const observer = new MutationObserver((mutations) => {
+        const input = this.getInputElement();
+        if (input && !input.hasAttribute('creativity-guard-monitored')) {
+          input.setAttribute('creativity-guard-monitored', 'true');
+          input.addEventListener('focus', callback);
+          input.addEventListener('input', callback);
+          input.addEventListener('keydown', callback);
+        }
+      });
+      
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
     }
   }
 };
