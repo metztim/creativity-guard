@@ -134,196 +134,112 @@ function getRandomSuggestion() {
 const siteHandlers = {
   'chat.openai.com': {
     setupReminder: function(inputElement, host) {
-      try {
-        console.log('ChatGPT: Setting up reminder...');
+      console.log('ChatGPT: Setting up reminder with simplified approach');
+      
+      // Try direct container approach
+      const container = document.querySelector('main');
+      if (container) {
+        console.log('ChatGPT: Found main container');
+        // Create a wrapper div that matches ChatGPT's styling
+        const wrapper = document.createElement('div');
+        wrapper.style.maxWidth = '48rem';
+        wrapper.style.margin = '0 auto';
+        wrapper.style.padding = '1rem';
+        wrapper.style.zIndex = '1000';
+        wrapper.style.position = 'relative';
+        wrapper.appendChild(host);
         
-        // Try multiple container selectors for more reliable positioning
-        const containers = [
-          document.querySelector('main > div > div > div'),
-          document.querySelector('main form'),
-          document.querySelector('main > div'),
-          document.querySelector('form'),
-          document.querySelector('[class*="chat-container"]'),
-          document.querySelector('[class*="conversation-container"]')
-        ];
-        
-        // Find first valid container
-        let container = null;
-        for (let i = 0; i < containers.length; i++) {
-          if (containers[i]) {
-            console.log(`ChatGPT: Found container option ${i+1}`);
-            container = containers[i];
-            break;
-          }
-        }
-        
-        if (container) {
-          // Create a wrapper div that matches ChatGPT's styling
-          const wrapper = document.createElement('div');
-          wrapper.style.maxWidth = '48rem';
-          wrapper.style.margin = '0 auto';
-          wrapper.style.padding = '1rem';
-          wrapper.style.zIndex = '1000';
-          wrapper.style.position = 'relative';
-          wrapper.appendChild(host);
-          
-          // Insert at the top of the container
-          container.insertBefore(wrapper, container.firstChild);
-          console.log('ChatGPT: Successfully inserted reminder');
-          return true;
-        }
-        
-        // Fallback positioning
-        console.log('ChatGPT: Trying fallback positioning');
-        if (inputElement && inputElement.form) {
-          inputElement.form.parentElement.insertBefore(host, inputElement.form);
-          console.log('ChatGPT: Inserted using form parent');
-          return true;
-        } else if (inputElement && inputElement.parentElement) {
-          const parent = inputElement.parentElement;
-          parent.parentElement.insertBefore(host, parent);
-          console.log('ChatGPT: Inserted using input parent');
-          return true;
-        }
-        
-        console.log('ChatGPT: Could not find suitable container');
-        return false;
-      } catch (e) {
-        console.error('ChatGPT: Error in setupReminder:', e);
-        return false;
+        // Insert at the top of the container
+        container.insertBefore(wrapper, container.firstChild);
+        console.log('ChatGPT: Inserted reminder at top of main');
+        return true;
       }
+      
+      // Fallback to form
+      const form = document.querySelector('form');
+      if (form && form.parentElement) {
+        console.log('ChatGPT: Using form fallback');
+        form.parentElement.insertBefore(host, form);
+        return true;
+      }
+      
+      console.log('ChatGPT: Using document body fallback');
+      document.body.insertBefore(host, document.body.firstChild);
+      return true;
     },
     
     getInputElement: function() {
-      try {
-        console.log('ChatGPT: Finding input element...');
-        // Try specific selectors for ChatGPT's input
-        const selectors = [
-          'textarea[placeholder*="Send a message"]',
-          '#prompt-textarea',
-          'form textarea', 
-          'textarea',
-          'form [contenteditable="true"]',
-          '[role="textbox"]'
-        ];
-        
-        for (const selector of selectors) {
-          const elements = document.querySelectorAll(selector);
-          
-          // Find the first visible element
-          for (const element of elements) {
-            if (element.offsetHeight > 0 && element.offsetWidth > 0) {
-              console.log(`ChatGPT: Found input using selector: ${selector}`);
-              return element;
-            }
-          }
+      // Try most reliable selectors first
+      const selectors = [
+        'textarea[placeholder*="Send a message"]',
+        '#prompt-textarea',
+        'form textarea'
+      ];
+      
+      for (const selector of selectors) {
+        const element = document.querySelector(selector);
+        if (element) {
+          console.log(`ChatGPT: Found input with selector: ${selector}`);
+          return element;
         }
-        
-        console.log('ChatGPT: No input element found');
-        return null;
-      } catch (e) {
-        console.error('ChatGPT: Error finding input:', e);
-        return null;
       }
+      
+      console.log('ChatGPT: No input element found');
+      return null;
     },
     
     monitorInput: function(callback) {
-      try {
-        console.log('ChatGPT: Setting up input monitoring');
+      console.log('ChatGPT: Setting up simplified input monitoring');
+      
+      // Get the input element
+      const input = this.getInputElement();
+      if (!input) {
+        console.log('ChatGPT: No input element found for monitoring');
         
-        // Function to set up event listeners
-        const setupListeners = (element) => {
-          if (!element || element.hasAttribute('creativity-guard-monitored')) return;
-          
-          console.log('ChatGPT: Setting up listeners for', element);
-          element.setAttribute('creativity-guard-monitored', 'true');
-          
-          // Monitor all relevant events
-          ['focus', 'click', 'input', 'keydown', 'mousedown'].forEach(eventType => {
-            element.addEventListener(eventType, (e) => {
-              console.log(`ChatGPT: ${eventType} event triggered`);
-              callback(e);
-            });
-          });
-          
-          // Also monitor the form if it exists
-          const form = element.closest('form');
-          if (form) {
-            form.addEventListener('submit', callback);
+        // Try again after a delay
+        setTimeout(() => {
+          const delayedInput = this.getInputElement();
+          if (delayedInput) {
+            console.log('ChatGPT: Found input element after delay');
+            this.setupListeners(delayedInput, callback);
             
-            // Monitor the parent container for interactions
-            if (form.parentElement) {
-              ['click', 'mousedown'].forEach(eventType => {
-                form.parentElement.addEventListener(eventType, (e) => {
-                  const input = this.getInputElement();
-                  if (input) callback(e);
-                });
-              });
-            }
-          }
-        };
-        
-        // Initial setup with retry
-        const maxRetries = 10;
-        let retryCount = 0;
-        
-        const trySetup = () => {
-          console.log(`ChatGPT: Attempt ${retryCount + 1}/${maxRetries} to find input`);
-          const textArea = this.getInputElement();
-          
-          if (textArea) {
-            setupListeners(textArea);
-            
-            // Try to manually trigger the reminder after successful setup
-            console.log('ChatGPT: Trying to trigger reminder manually');
+            // Manually trigger once
             setTimeout(callback, 500);
-          } else if (retryCount < maxRetries) {
-            retryCount++;
-            setTimeout(trySetup, 1000);
-          } else {
-            console.log('ChatGPT: Max retries reached, could not find input');
           }
-        };
-        
-        // Start the setup process
-        trySetup();
-        
-        // Global document level monitoring
-        if (!document.hasAttribute('creativity-guard-monitored')) {
-          document.setAttribute('creativity-guard-monitored', 'true');
-          document.addEventListener('selectionchange', () => {
-            const input = this.getInputElement();
-            if (input) callback();
-          }, true);
-        }
-        
-        // Full document monitor for dynamic changes
-        const observer = new MutationObserver(() => {
-          console.log('ChatGPT: DOM mutation detected');
-          const textArea = this.getInputElement();
-          if (textArea) setupListeners(textArea);
-        });
-        
-        observer.observe(document.body, {
-          childList: true,
-          subtree: true,
-          attributes: true,
-          characterData: true
-        });
-        
-        // Final fallback - periodic check
-        const intervalId = setInterval(() => {
+        }, 1000);
+        return;
+      }
+      
+      this.setupListeners(input, callback);
+      
+      // Manually trigger once
+      setTimeout(callback, 500);
+    },
+    
+    setupListeners: function(element, callback) {
+      if (!element || element.hasAttribute('creativity-guard-monitored')) return;
+      
+      console.log('ChatGPT: Setting up listeners');
+      element.setAttribute('creativity-guard-monitored', 'true');
+      
+      // Use simpler event listening like Claude
+      ['focus', 'input', 'click'].forEach(eventType => {
+        element.addEventListener(eventType, callback);
+      });
+      
+      // Also monitor the form submission
+      const form = element.closest('form');
+      if (form) {
+        form.addEventListener('submit', callback);
+      }
+      
+      // Add document-level focus event
+      if (!document.body.hasAttribute('creativity-guard-monitored')) {
+        document.body.setAttribute('creativity-guard-monitored', 'true');
+        document.addEventListener('focus', () => {
           const input = this.getInputElement();
-          if (input && !input.hasAttribute('creativity-guard-monitored')) {
-            console.log('ChatGPT: Found input via interval');
-            setupListeners(input);
-          }
-        }, 2000);
-        
-        // Clean up interval after 30 seconds
-        setTimeout(() => clearInterval(intervalId), 30000);
-      } catch (e) {
-        console.error('ChatGPT: Error in monitorInput:', e);
+          if (input) callback();
+        }, true);
       }
     }
   },
@@ -349,195 +265,92 @@ const siteHandlers = {
   },
   'typingmind.com': {
     setupReminder: function(inputElement, host) {
-      try {
-        console.log('TypingMind: Setting up reminder...');
-        
-        // Find the best container (more reliable positioning)
-        const chatbox = document.querySelector('.chat-box') || document.querySelector('.chatbox');
-        if (chatbox) {
-          console.log('TypingMind: Found chat-box container');
-          chatbox.insertBefore(host, chatbox.firstChild);
-          return true;
-        }
-        
-        // Try to find editor container
-        const editorContainer = document.querySelector('.absolute.bottom-0') || 
-                               document.querySelector('.CodeMirror') ||
-                               document.querySelector('[class*="editor"]');
-        
-        if (editorContainer) {
-          console.log('TypingMind: Found editor container');
-          editorContainer.parentElement.insertBefore(host, editorContainer);
-          return true;
-        }
-        
-        // Final fallback
-        if (inputElement && inputElement.parentElement) {
-          console.log('TypingMind: Using fallback insertion');
-          inputElement.parentElement.insertBefore(host, inputElement);
-          return true;
-        }
-        
-        console.log('TypingMind: Could not find suitable container');
-        return false;
-      } catch (e) {
-        console.error('TypingMind: Error in setup:', e);
-        return false;
+      console.log('TypingMind: Setting up reminder with simplified approach');
+      
+      // Try the main content area first
+      const container = document.querySelector('main') || 
+                       document.querySelector('.chat-container') || 
+                       document.querySelector('.chat-box');
+      
+      if (container) {
+        console.log('TypingMind: Found container');
+        container.insertBefore(host, container.firstChild);
+        return true;
       }
+      
+      // Fallback to body
+      console.log('TypingMind: Using body fallback');
+      document.body.insertBefore(host, document.body.firstChild);
+      return true;
     },
+    
     getInputElement: function() {
-      try {
-        // Try specific selectors for TypingMind
-        console.log('TypingMind: Finding input element...');
-        
-        // Try CodeMirror specific elements
-        const cmContent = document.querySelector('.cm-content');
-        if (cmContent) {
-          console.log('TypingMind: Found cm-content');
-          return cmContent;
+      // Try the most reliable selectors first
+      const selectors = [
+        '.cm-content',
+        'textarea',
+        '[contenteditable="true"]'
+      ];
+      
+      for (const selector of selectors) {
+        const element = document.querySelector(selector);
+        if (element && element.offsetWidth > 0 && element.offsetHeight > 0) {
+          console.log(`TypingMind: Found input with selector: ${selector}`);
+          return element;
         }
-        
-        // Try visible contenteditable divs
-        const editables = document.querySelectorAll('[contenteditable="true"]');
-        if (editables.length > 0) {
-          for (const editable of editables) {
-            if (editable.offsetWidth > 0 && editable.offsetHeight > 0) {
-              console.log('TypingMind: Found visible contenteditable');
-              return editable;
-            }
-          }
-        }
-        
-        // Try any textareas
-        const textareas = document.querySelectorAll('textarea');
-        if (textareas.length > 0) {
-          for (const textarea of textareas) {
-            if (textarea.offsetWidth > 0 && textarea.offsetHeight > 0) {
-              console.log('TypingMind: Found visible textarea');
-              return textarea;
-            }
-          }
-        }
-        
-        // Fallback to any input field
-        const inputs = document.querySelectorAll('input[type="text"]');
-        if (inputs.length > 0) {
-          for (const input of inputs) {
-            if (input.offsetWidth > 0 && input.offsetHeight > 0) {
-              console.log('TypingMind: Found visible input');
-              return input;
-            }
-          }
-        }
-        
-        console.log('TypingMind: No input element found');
-        return null;
-      } catch (e) {
-        console.error('TypingMind: Error finding input:', e);
-        return null;
       }
+      
+      console.log('TypingMind: No input element found');
+      return null;
     },
+    
     monitorInput: function(callback) {
-      try {
-        console.log('TypingMind: Setting up input monitoring');
+      console.log('TypingMind: Setting up simplified input monitoring');
+      
+      // Get the input element
+      const input = this.getInputElement();
+      if (!input) {
+        console.log('TypingMind: No input element found for monitoring');
         
-        // Function to set up event listeners
-        const setupListeners = (element) => {
-          if (!element || element.hasAttribute('creativity-guard-monitored')) return;
-          
-          console.log('TypingMind: Setting up listeners for', element);
-          element.setAttribute('creativity-guard-monitored', 'true');
-          
-          // Use all event types that might trigger when user interacts
-          ['focus', 'click', 'input', 'keydown', 'mousedown'].forEach(eventType => {
-            element.addEventListener(eventType, (e) => {
-              console.log(`TypingMind: ${eventType} event triggered`);
-              callback(e);
-            });
-          });
-        };
-        
-        // Initial setup with longer retry window
-        const maxRetries = 10;
-        let retryCount = 0;
-        
-        const trySetup = () => {
-          console.log(`TypingMind: Attempt ${retryCount + 1}/${maxRetries} to find input`);
-          const input = this.getInputElement();
-          
-          if (input) {
-            setupListeners(input);
+        // Try again after a delay
+        setTimeout(() => {
+          const delayedInput = this.getInputElement();
+          if (delayedInput) {
+            console.log('TypingMind: Found input element after delay');
+            this.setupListeners(delayedInput, callback);
             
-            // Also monitor the editor wrapper
-            const editorWrappers = [
-              input.closest('.cm-editor'),
-              input.closest('.CodeMirror'),
-              document.querySelector('.chat-box'),
-              document.querySelector('[class*="editor"]')
-            ];
-            
-            editorWrappers.forEach(wrapper => {
-              if (wrapper && !wrapper.hasAttribute('creativity-guard-monitored')) {
-                console.log('TypingMind: Setting up wrapper listeners');
-                wrapper.setAttribute('creativity-guard-monitored', 'true');
-                
-                ['click', 'mousedown', 'focus'].forEach(eventType => {
-                  wrapper.addEventListener(eventType, callback);
-                });
-              }
-            });
-            
-            // Try to manually trigger the reminder after successful setup
-            console.log('TypingMind: Trying to trigger reminder manually');
+            // Manually trigger once
             setTimeout(callback, 500);
-          } else if (retryCount < maxRetries) {
-            retryCount++;
-            setTimeout(trySetup, 1000);
-          } else {
-            console.log('TypingMind: Max retries reached, could not find input');
           }
-        };
+        }, 1000);
+        return;
+      }
+      
+      this.setupListeners(input, callback);
+      
+      // Manually trigger once after a delay
+      setTimeout(callback, 500);
+    },
+    
+    setupListeners: function(element, callback) {
+      if (!element || !element.addEventListener) return;
+      
+      try {
+        console.log('TypingMind: Setting up listeners');
         
-        // Start the setup process
-        trySetup();
-        
-        // Set up general document event capture to catch any interactions
-        if (!document.hasAttribute('creativity-guard-monitored')) {
-          document.setAttribute('creativity-guard-monitored', 'true');
-          document.addEventListener('selectionchange', () => {
-            console.log('TypingMind: Selection changed, checking input');
-            const input = this.getInputElement();
-            if (input) callback();
-          }, true);
-        }
-        
-        // More aggressive mutation observer
-        const observer = new MutationObserver((mutations) => {
-          console.log('TypingMind: DOM mutation detected');
-          const input = this.getInputElement();
-          if (input) setupListeners(input);
+        // Use simpler event listening like Claude
+        ['focus', 'input', 'click'].forEach(eventType => {
+          element.addEventListener(eventType, callback);
         });
         
-        observer.observe(document.body, {
-          childList: true,
-          subtree: true,
-          attributes: true,
-          characterData: true
-        });
-        
-        // Final fallback - check periodically
-        const intervalId = setInterval(() => {
+        // Add document-level event
+        document.addEventListener('click', (e) => {
+          // Check if the click was on or near the input area
           const input = this.getInputElement();
-          if (input && !input.hasAttribute('creativity-guard-monitored')) {
-            console.log('TypingMind: Detected input via interval');
-            setupListeners(input);
-          }
-        }, 2000);
-        
-        // Clean up interval after 30 seconds
-        setTimeout(() => clearInterval(intervalId), 30000);
+          if (input) callback();
+        }, true);
       } catch (e) {
-        console.error('TypingMind: Error in monitor setup:', e);
+        console.error('TypingMind: Error setting up listeners:', e);
       }
     }
   }
@@ -753,84 +566,84 @@ function showReflectionModal() {
   try {
     console.log('Initializing AI site handlers...');
     
-    // Determine which site we're on
-    const currentSite = Object.keys(siteHandlers).find(site => window.location.hostname.includes(site));
-    console.log('Detected site:', currentSite);
-    
-    if (!currentSite) {
-      console.log('Not on a supported AI site');
-      return;
-    }
-    
-    console.log(`Initializing for ${currentSite}`);
-    const handler = siteHandlers[currentSite];
-    
-    // Track chats where modal has been shown
-    const shownInChats = new Set();
-    
-    // Function to get current chat ID
-    function getCurrentChatId() {
-      try {
-        // For ChatGPT, use the conversation ID from URL
-        if (currentSite === 'chat.openai.com') {
-          const match = window.location.pathname.match(/\/c\/([\w-]+)/);
-          return match ? match[1] : window.location.pathname;
+    // Function to start initialization
+    const startInit = () => {
+      // Determine which site we're on
+      const currentSite = Object.keys(siteHandlers).find(site => window.location.hostname.includes(site));
+      console.log('Detected site:', currentSite);
+      
+      if (!currentSite) {
+        console.log('Not on a supported AI site');
+        return;
+      }
+      
+      console.log(`Initializing for ${currentSite}`);
+      const handler = siteHandlers[currentSite];
+      
+      // Track chats where modal has been shown
+      const shownInChats = new Set();
+      
+      // Function to get current chat ID
+      function getCurrentChatId() {
+        try {
+          // For ChatGPT, use the conversation ID from URL
+          if (currentSite === 'chat.openai.com') {
+            const match = window.location.pathname.match(/\/c\/([\w-]+)/);
+            return match ? match[1] : window.location.pathname;
+          }
+          // For other platforms, use the full pathname as the ID
+          return window.location.pathname;
+        } catch (e) {
+          console.error('Error getting chat ID:', e);
+          return window.location.pathname;
         }
-        // For other platforms, use the full pathname as the ID
-        return window.location.pathname;
-      } catch (e) {
-        console.error('Error getting chat ID:', e);
-        return window.location.pathname;
       }
-    }
-    
-    // Function to check if this is a new chat context
-    function isNewChatContext() {
-      try {
-        const inputElement = handler.getInputElement();
-        if (!inputElement) return false;
-        
-        // Get current input content
-        const currentInputContent = inputElement.value || inputElement.textContent || '';
-        
-        // Check if input was cleared (new chat started)
-        return currentInputContent === '';
-      } catch (e) {
-        console.error('Error checking chat context:', e);
-        return false;
-      }
-    }
-    
-    // Function to handle potential AI interaction
-    function handleAIInteraction(event) {
-      try {
-        console.log(`AI interaction detected from ${event?.type || 'unknown'} event`);
-        const chatId = getCurrentChatId();
-        
-        // Skip if already shown in this chat
-        if (shownInChats.has(chatId)) {
-          console.log(`Already shown reminder for chat: ${chatId}`);
-          return;
+      
+      // Function to check if this is a new chat context
+      function isNewChatContext() {
+        try {
+          const inputElement = handler.getInputElement();
+          if (!inputElement) return false;
+          
+          // Get current input content
+          const currentInputContent = inputElement.value || inputElement.textContent || '';
+          
+          // Check if input was cleared (new chat started)
+          return currentInputContent === '';
+        } catch (e) {
+          console.error('Error checking chat context:', e);
+          return false;
         }
-        
-        console.log(`Showing reminder for chat: ${chatId}`);
-        showReflectionModal();
-        shownInChats.add(chatId);
-        
-        // Save updated stats to storage
-        storage.get('creativityGuardStats', function(result) {
-          const updatedStats = result ? result : { ...stats };
-          updatedStats.aiUsageCount++;
-          storage.set('creativityGuardStats', updatedStats);
-          stats = updatedStats;
-        });
-      } catch (e) {
-        console.error('Error handling AI interaction:', e);
       }
-    }
-    
-    // Wait for DOM to be fully loaded before initializing
-    function initialize() {
+      
+      // Function to handle potential AI interaction
+      function handleAIInteraction(event) {
+        try {
+          console.log(`AI interaction detected from ${event?.type || 'unknown'} event`);
+          const chatId = getCurrentChatId();
+          
+          // Skip if already shown in this chat
+          if (shownInChats.has(chatId)) {
+            console.log(`Already shown reminder for chat: ${chatId}`);
+            return;
+          }
+          
+          console.log(`Showing reminder for chat: ${chatId}`);
+          showReflectionModal();
+          shownInChats.add(chatId);
+          
+          // Save updated stats to storage
+          storage.get('creativityGuardStats', function(result) {
+            const updatedStats = result ? result : { ...stats };
+            updatedStats.aiUsageCount++;
+            storage.set('creativityGuardStats', updatedStats);
+            stats = updatedStats;
+          });
+        } catch (e) {
+          console.error('Error handling AI interaction:', e);
+        }
+      }
+      
       // Set up input monitoring
       console.log('Setting up input monitoring...');
       handler.monitorInput(handleAIInteraction);
@@ -858,16 +671,16 @@ function showReflectionModal() {
       setTimeout(handleAIInteraction, 1000, {type: 'init'});
       
       console.log(`Creativity Guard fully initialized for ${currentSite}`);
-    }
+    };
     
     // If document is already loaded, initialize immediately
-    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    if (document.readyState === 'complete') {
       console.log('Document already loaded, initializing immediately');
-      initialize();
+      startInit();
     } else {
-      // Otherwise wait for DOMContentLoaded
-      console.log('Waiting for DOMContentLoaded event');
-      document.addEventListener('DOMContentLoaded', initialize);
+      // Otherwise wait for load event
+      console.log('Waiting for window load event');
+      window.addEventListener('load', startInit);
     }
   } catch (error) {
     console.error('Error initializing Creativity Guard for AI sites:', error);
