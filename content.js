@@ -14,64 +14,112 @@ let stats = {
   thoughtFirstCount: 0
 };
 
-// Safe wrapper for chrome.storage operations
+// Safe wrapper for chrome.storage operations with retry mechanism
 const storage = {
-  get: function(callback) {
+  isValidContext: function() {
     try {
-      if (!chrome?.runtime?.id) {
-        console.warn('Extension context invalid, storage.get operation cancelled');
+      return typeof chrome !== 'undefined' && 
+             chrome?.runtime?.id !== undefined && 
+             chrome?.storage?.local !== undefined;
+    } catch (e) {
+      return false;
+    }
+  },
+  
+  get: function(key, callback, retryCount = 0) {
+    const maxRetries = 2;
+    const retryDelay = 500;
+    
+    const retry = () => {
+      if (retryCount < maxRetries) {
+        console.warn(`Retrying storage get operation (${retryCount + 1}/${maxRetries})`);
+        setTimeout(() => this.get(key, callback, retryCount + 1), retryDelay);
+      } else {
+        console.warn('Max retries reached for storage get operation');
         if (callback) callback(null);
+      }
+    };
+    
+    try {
+      if (!this.isValidContext()) {
+        retry();
         return;
       }
       
-      chrome.storage.local.get(['creativityGuardStats'], function(result) {
-        if (chrome?.runtime?.lastError) {
-          console.error('Storage get error:', chrome.runtime.lastError);
-          if (callback) callback(null);
-          return;
+      chrome.storage.local.get([key], function(result) {
+        try {
+          if (chrome?.runtime?.lastError) {
+            console.error('Storage get error:', chrome.runtime.lastError);
+            retry();
+            return;
+          }
+          if (callback) callback(result[key]);
+        } catch (e) {
+          console.error('Error in storage get callback:', e);
+          retry();
         }
-        if (callback) callback(result.creativityGuardStats);
       });
     } catch (e) {
       console.error('Storage get error:', e);
-      if (callback) callback(null);
+      retry();
     }
   },
-  set: function(value, callback) {
-    try {
-      if (!chrome?.runtime?.id) {
-        console.warn('Extension context invalid, storage.set operation cancelled');
+  
+  set: function(key, value, callback, retryCount = 0) {
+    const maxRetries = 2;
+    const retryDelay = 500;
+    
+    const retry = () => {
+      if (retryCount < maxRetries) {
+        console.warn(`Retrying storage set operation (${retryCount + 1}/${maxRetries})`);
+        setTimeout(() => this.set(key, value, callback, retryCount + 1), retryDelay);
+      } else {
+        console.warn('Max retries reached for storage set operation');
         if (callback) callback(false);
+      }
+    };
+    
+    try {
+      if (!this.isValidContext()) {
+        retry();
         return;
       }
       
-      chrome.storage.local.set({creativityGuardStats: value}, function() {
-        if (chrome?.runtime?.lastError) {
-          console.error('Storage set error:', chrome.runtime.lastError);
-          if (callback) callback(false);
-          return;
+      const data = {};
+      data[key] = value;
+      
+      chrome.storage.local.set(data, function() {
+        try {
+          if (chrome?.runtime?.lastError) {
+            console.error('Storage set error:', chrome.runtime.lastError);
+            retry();
+            return;
+          }
+          if (callback) callback(true);
+        } catch (e) {
+          console.error('Error in storage set callback:', e);
+          retry();
         }
-        if (callback) callback(true);
       });
     } catch (e) {
       console.error('Storage set error:', e);
-      if (callback) callback(false);
+      retry();
     }
   }
 };
 
-// Load saved stats
+// Load saved stats with retry mechanism
 function loadStats() {
-  storage.get(function(savedStats) {
+  storage.get('creativityGuardStats', function(savedStats) {
     if (savedStats) {
       stats = savedStats;
     }
   });
 }
 
-// Save stats
+// Save stats with retry mechanism
 function saveStats() {
-  storage.set(stats);
+  storage.set('creativityGuardStats', stats);
 }
 
 // Initialize stats
@@ -82,6 +130,108 @@ function getRandomSuggestion() {
   return suggestions[Math.floor(Math.random() * suggestions.length)];
 }
 
+// Site-specific handlers for AI platforms
+const siteHandlers = {
+  'chat.openai.com': {
+    setupReminder: function(inputElement, host) {
+      try {
+        // Find the main chat container
+        const chatContainer = document.querySelector('main > div > div > div');
+        if (chatContainer) {
+          // Create a wrapper div that matches ChatGPT's styling
+          const wrapper = document.createElement('div');
+          wrapper.style.maxWidth = '48rem';
+          wrapper.style.margin = '0 auto';
+          wrapper.style.padding = '1rem';
+          wrapper.appendChild(host);
+          
+          // Insert at the top of the chat container
+          chatContainer.insertBefore(wrapper, chatContainer.firstChild);
+          return true;
+        }
+        return false;
+      } catch (e) {
+        console.error('Error in ChatGPT setup:', e);
+        return false;
+      }
+    },
+    getInputElement: function() {
+      return document.querySelector('#prompt-textarea');
+    },
+    monitorInput: function(callback) {
+      const textArea = this.getInputElement();
+      if (textArea) {
+        textArea.addEventListener('focus', callback);
+        textArea.addEventListener('input', callback);
+      }
+      
+      // Also monitor for dynamic textarea changes
+      const observer = new MutationObserver((mutations) => {
+        const textArea = this.getInputElement();
+        if (textArea && !textArea.hasAttribute('creativity-guard-monitored')) {
+          textArea.setAttribute('creativity-guard-monitored', 'true');
+          textArea.addEventListener('focus', callback);
+          textArea.addEventListener('input', callback);
+        }
+      });
+      
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+    }
+  },
+  'claude.ai': {
+    setupReminder: function(inputElement, host) {
+      const container = inputElement.closest('.cl-text-container');
+      if (container) {
+        container.insertBefore(host, container.firstChild);
+        return true;
+      }
+      return false;
+    },
+    getInputElement: function() {
+      return document.querySelector('[contenteditable="true"]');
+    },
+    monitorInput: function(callback) {
+      const input = this.getInputElement();
+      if (input) {
+        input.addEventListener('focus', callback);
+        input.addEventListener('input', callback);
+      }
+    }
+  },
+  'typingmind.com': {
+    setupReminder: function(inputElement, host) {
+      const editorContainer = inputElement.closest('.cm-editor');
+      if (editorContainer) {
+        const parentContainer = editorContainer.parentElement;
+        if (parentContainer) {
+          parentContainer.insertBefore(host, editorContainer);
+          return true;
+        }
+      }
+      return false;
+    },
+    getInputElement: function() {
+      return document.querySelector('.cm-content');
+    },
+    monitorInput: function(callback) {
+      const input = this.getInputElement();
+      if (input) {
+        input.addEventListener('focus', callback);
+        input.addEventListener('input', callback);
+        
+        // Also monitor the editor container for clicks
+        const editorContainer = input.closest('.cm-editor');
+        if (editorContainer) {
+          editorContainer.addEventListener('click', callback);
+        }
+      }
+    }
+  }
+};
+
 // Create and show the reminder
 function showReflectionModal() {
   try {
@@ -91,12 +241,12 @@ function showReflectionModal() {
     }
     
     // Get the input element for the current site
-    const currentSite = Object.keys(siteConfigs).find(site => window.location.hostname.includes(site));
-    const config = currentSite ? siteConfigs[currentSite] : null;
+    const currentSite = Object.keys(siteHandlers).find(site => window.location.hostname.includes(site));
+    const handler = currentSite ? siteHandlers[currentSite] : null;
     
-    if (!config) return;
+    if (!handler) return;
     
-    const inputElement = document.querySelector(config.inputSelector);
+    const inputElement = handler.getInputElement();
     if (!inputElement) return;
     
     // Add styles to the document if they don't exist
@@ -252,26 +402,21 @@ function showReflectionModal() {
     reminder.appendChild(buttonsContainer);
     host.appendChild(reminder);
     
-    // Different positioning based on the site
-    if (currentSite === 'chat.openai.com' || currentSite === 'chatgpt.com') {
-      // Find the main form container
-      const mainContainer = document.querySelector('form');
-      if (mainContainer) {
-        mainContainer.insertBefore(host, mainContainer.firstChild);
-      } else {
-        // Fallback to the closest parent with a role
-        const container = inputElement.closest('[role="presentation"]');
-        if (container) {
-          container.insertBefore(host, container.firstChild);
-        } else {
-          // Last resort: insert before the input
-          inputElement.parentElement.insertBefore(host, inputElement);
-        }
-      }
-    } else {
-      // For other sites, insert before the input
+    // Use site-specific handler to set up the reminder
+    const setupSuccess = handler.setupReminder(inputElement, host);
+    if (!setupSuccess) {
+      // Fallback to default insertion
       inputElement.parentElement.insertBefore(host, inputElement);
     }
+
+    // Set up input monitoring using site-specific handler
+    handler.monitorInput(() => {
+      const chatId = getCurrentChatId();
+      if (!shownInChats.has(chatId)) {
+        showReflectionModal();
+        shownInChats.add(chatId);
+      }
+    });
     
     // Increment AI usage attempt counter
     stats.aiUsageCount++;
@@ -286,11 +431,31 @@ const siteConfigs = {
   'chat.openai.com': {
     inputSelector: '#prompt-textarea, .w-full.resize-none.focus-within\\:border-0',
     checkFunc: function(event) {
-      // For ChatGPT we want to check when the textarea gets focus or when a key is pressed
       return event.type === 'focus' || event.type === 'keydown';
     },
     newChatSelector: 'nav a',
     observeTarget: 'body'
+  },
+  'typingmind.com': {
+    inputSelector: '.cm-content, .cm-line',
+    checkFunc: function(event) {
+      // For CodeMirror editor, we need to check both focus and keydown
+      return event.type === 'focus' || event.type === 'keydown' || event.type === 'input';
+    },
+    newChatSelector: 'nav a',
+    observeTarget: 'body',
+    setupFunc: function(inputElement, showModalIfNeeded) {
+      // Special setup for Typingmind's CodeMirror editor
+      inputElement.addEventListener('focus', showModalIfNeeded);
+      inputElement.addEventListener('keydown', showModalIfNeeded);
+      inputElement.addEventListener('input', showModalIfNeeded);
+      
+      // Also monitor parent editor container
+      const editorContainer = inputElement.closest('.cm-editor');
+      if (editorContainer) {
+        editorContainer.addEventListener('click', showModalIfNeeded);
+      }
+    }
   },
   'claude.ai': {
     inputSelector: '[contenteditable="true"]',
@@ -310,11 +475,6 @@ const siteConfigs = {
   'poe.com': {
     inputSelector: 'textarea',
     newChatSelector: 'nav a',
-    observeTarget: 'body'
-  },
-  'typingmind.com': {
-    inputSelector: 'textarea',
-    newChatSelector: 'button',
     observeTarget: 'body'
   },
   'chatgpt.com': {
@@ -340,10 +500,10 @@ const siteConfigs = {
 
 try {
   // Determine which site we're on
-  const currentSite = Object.keys(siteConfigs).find(site => window.location.hostname.includes(site));
-  const config = currentSite ? siteConfigs[currentSite] : null;
+  const currentSite = Object.keys(siteHandlers).find(site => window.location.hostname.includes(site));
+  const handler = currentSite ? siteHandlers[currentSite] : null;
 
-  if (config) {
+  if (handler) {
     // Track chats where modal has been shown
     const shownInChats = new Set();
     
@@ -366,7 +526,7 @@ try {
     // Function to check if this is a new chat context
     function isNewChatContext() {
       try {
-        const inputElements = document.querySelectorAll(config.inputSelector);
+        const inputElements = document.querySelectorAll(siteConfigs[currentSite].inputSelector);
         let currentInputContent = '';
         
         // Get current input content
@@ -385,7 +545,7 @@ try {
     // Function to set up input monitoring
     function setupInputMonitoring() {
       try {
-        const inputElements = document.querySelectorAll(config.inputSelector);
+        const inputElements = document.querySelectorAll(siteConfigs[currentSite].inputSelector);
         
         inputElements.forEach(inputElement => {
           if (!inputElement.hasAttribute('creativity-guard-monitored')) {
@@ -395,16 +555,13 @@ try {
             // Show modal only when user starts typing
             const showModalIfNeeded = (event) => {
               try {
-                // Only proceed if this is an input event (typing)
-                if (event.type !== 'input') return;
-                
                 const chatId = getCurrentChatId();
                 
                 // If we've already shown the modal in this chat, don't show it again
                 if (shownInChats.has(chatId)) return;
                 
-                // Show modal if user is typing and we haven't shown it in this chat
-                if (inputElement.value || inputElement.textContent) {
+                // Check if we should show the modal based on site-specific conditions
+                if (siteConfigs[currentSite].checkFunc && siteConfigs[currentSite].checkFunc(event)) {
                   showReflectionModal();
                   shownInChats.add(chatId);
                 }
@@ -413,8 +570,12 @@ try {
               }
             };
             
-            // Only listen for input events (typing)
-            inputElement.addEventListener('input', showModalIfNeeded);
+            // Use site-specific setup if available, otherwise use default
+            if (siteConfigs[currentSite].setupFunc) {
+              siteConfigs[currentSite].setupFunc(inputElement, showModalIfNeeded);
+            } else {
+              inputElement.addEventListener('input', showModalIfNeeded);
+            }
           }
         });
       } catch (e) {
@@ -432,7 +593,7 @@ try {
       });
       
       // Start observing with more specific options
-      const observeTarget = document.querySelector(config.observeTarget);
+      const observeTarget = document.querySelector(siteConfigs[currentSite].observeTarget);
       if (observeTarget) {
         observer.observe(observeTarget, { 
           childList: true, 
@@ -470,49 +631,10 @@ const socialMediaModule = {
   // Storage for social media stats and settings
   storage: {
     get: function(callback) {
-      try {
-        if (!chrome?.runtime?.id) {
-          console.warn('Extension context invalid, social media storage.get operation cancelled');
-          if (callback) callback(null);
-          return;
-        }
-        
-        chrome.runtime.sendMessage({ type: 'GET_SOCIAL_MEDIA_SETTINGS' }, (response) => {
-          if (chrome?.runtime?.lastError) {
-            console.error('Social media storage get error:', chrome.runtime.lastError);
-            if (callback) callback(null);
-            return;
-          }
-          if (callback) callback(response);
-        });
-      } catch (e) {
-        console.error('Social media storage get error:', e);
-        if (callback) callback(null);
-      }
+      storage.get('socialMediaSettings', callback);
     },
     set: function(value, callback) {
-      try {
-        if (!chrome?.runtime?.id) {
-          console.warn('Extension context invalid, social media storage.set operation cancelled');
-          if (callback) callback(false);
-          return;
-        }
-        
-        chrome.runtime.sendMessage({ 
-          type: 'SET_SOCIAL_MEDIA_SETTINGS',
-          settings: value
-        }, (response) => {
-          if (chrome?.runtime?.lastError) {
-            console.error('Social media storage set error:', chrome.runtime.lastError);
-            if (callback) callback(false);
-            return;
-          }
-          if (callback) callback(response && response.success);
-        });
-      } catch (e) {
-        console.error('Social media storage set error:', e);
-        if (callback) callback(false);
-      }
+      storage.set('socialMediaSettings', value, callback);
     }
   },
   
