@@ -426,78 +426,6 @@ function showReflectionModal() {
   }
 }
 
-// Site-specific selectors for input areas
-const siteConfigs = {
-  'chat.openai.com': {
-    inputSelector: '#prompt-textarea, .w-full.resize-none.focus-within\\:border-0',
-    checkFunc: function(event) {
-      return event.type === 'focus' || event.type === 'keydown';
-    },
-    newChatSelector: 'nav a',
-    observeTarget: 'body'
-  },
-  'typingmind.com': {
-    inputSelector: '.cm-content, .cm-line',
-    checkFunc: function(event) {
-      // For CodeMirror editor, we need to check both focus and keydown
-      return event.type === 'focus' || event.type === 'keydown' || event.type === 'input';
-    },
-    newChatSelector: 'nav a',
-    observeTarget: 'body',
-    setupFunc: function(inputElement, showModalIfNeeded) {
-      // Special setup for Typingmind's CodeMirror editor
-      inputElement.addEventListener('focus', showModalIfNeeded);
-      inputElement.addEventListener('keydown', showModalIfNeeded);
-      inputElement.addEventListener('input', showModalIfNeeded);
-      
-      // Also monitor parent editor container
-      const editorContainer = inputElement.closest('.cm-editor');
-      if (editorContainer) {
-        editorContainer.addEventListener('click', showModalIfNeeded);
-      }
-    }
-  },
-  'claude.ai': {
-    inputSelector: '[contenteditable="true"]',
-    newChatSelector: 'nav a',
-    observeTarget: 'body'
-  },
-  'bard.google.com': {
-    inputSelector: 'textarea',
-    newChatSelector: 'button',
-    observeTarget: 'body'
-  },
-  'gemini.google.com': {
-    inputSelector: 'textarea',
-    newChatSelector: 'button',
-    observeTarget: 'body'
-  },
-  'poe.com': {
-    inputSelector: 'textarea',
-    newChatSelector: 'nav a',
-    observeTarget: 'body'
-  },
-  'chatgpt.com': {
-    inputSelector: '#prompt-textarea, .w-full.resize-none.focus-within\\:border-0',
-    checkFunc: function(event) {
-      // Same as chat.openai.com
-      return event.type === 'focus' || event.type === 'keydown';
-    },
-    newChatSelector: 'nav a',
-    observeTarget: 'body'
-  },
-  'lex.page': {
-    inputSelector: '[data-placeholder="How can I help with your writing today?"]',
-    newChatSelector: '.cursor-pointer',
-    observeTarget: 'body'
-  },
-  'facebook.com': {
-    inputSelector: '[contenteditable="true"]',
-    newChatSelector: 'a',
-    observeTarget: 'body'
-  }
-};
-
 try {
   // Determine which site we're on
   const currentSite = Object.keys(siteHandlers).find(site => window.location.hostname.includes(site));
@@ -526,13 +454,11 @@ try {
     // Function to check if this is a new chat context
     function isNewChatContext() {
       try {
-        const inputElements = document.querySelectorAll(siteConfigs[currentSite].inputSelector);
-        let currentInputContent = '';
+        const inputElement = handler.getInputElement();
+        if (!inputElement) return false;
         
         // Get current input content
-        inputElements.forEach(input => {
-          currentInputContent += input.value || input.textContent || '';
-        });
+        const currentInputContent = inputElement.value || inputElement.textContent || '';
         
         // Check if input was cleared (new chat started)
         return currentInputContent === '';
@@ -542,88 +468,55 @@ try {
       }
     }
     
-    // Function to set up input monitoring
-    function setupInputMonitoring() {
+    // Function to handle potential AI interaction
+    function handleAIInteraction() {
       try {
-        const inputElements = document.querySelectorAll(siteConfigs[currentSite].inputSelector);
+        const chatId = getCurrentChatId();
         
-        inputElements.forEach(inputElement => {
-          if (!inputElement.hasAttribute('creativity-guard-monitored')) {
-            // Mark this element as monitored
-            inputElement.setAttribute('creativity-guard-monitored', 'true');
-            
-            // Show modal only when user starts typing
-            const showModalIfNeeded = (event) => {
-              try {
-                const chatId = getCurrentChatId();
-                
-                // If we've already shown the modal in this chat, don't show it again
-                if (shownInChats.has(chatId)) return;
-                
-                // Check if we should show the modal based on site-specific conditions
-                if (siteConfigs[currentSite].checkFunc && siteConfigs[currentSite].checkFunc(event)) {
-                  showReflectionModal();
-                  shownInChats.add(chatId);
-                }
-              } catch (e) {
-                console.error('Error in showModalIfNeeded:', e);
-              }
-            };
-            
-            // Use site-specific setup if available, otherwise use default
-            if (siteConfigs[currentSite].setupFunc) {
-              siteConfigs[currentSite].setupFunc(inputElement, showModalIfNeeded);
-            } else {
-              inputElement.addEventListener('input', showModalIfNeeded);
-            }
-          }
+        // Skip if already shown in this chat
+        if (shownInChats.has(chatId)) {
+          return;
+        }
+        
+        showReflectionModal();
+        shownInChats.add(chatId);
+        
+        // Save updated stats to storage
+        storage.get('creativityGuardStats', function(result) {
+          const updatedStats = result ? result : { ...stats };
+          updatedStats.aiUsageCount++;
+          storage.set('creativityGuardStats', updatedStats);
+          stats = updatedStats;
         });
       } catch (e) {
-        console.error('Error in setupInputMonitoring:', e);
+        console.error('Error handling AI interaction:', e);
       }
     }
     
-    // Check for input element immediately
-    setupInputMonitoring();
+    // Set up input monitoring
+    handler.monitorInput(handleAIInteraction);
     
-    // Set up observer to monitor for changes
-    try {
-      const observer = new MutationObserver(function(mutations) {
-        setupInputMonitoring();
-      });
-      
-      // Start observing with more specific options
-      const observeTarget = document.querySelector(siteConfigs[currentSite].observeTarget);
-      if (observeTarget) {
-        observer.observe(observeTarget, { 
-          childList: true, 
-          subtree: true,
-          attributes: true,
-          characterData: true
-        });
+    // Monitor URL changes for new conversations in SPA
+    let lastUrl = window.location.href;
+    const urlObserver = new MutationObserver(() => {
+      if (lastUrl !== window.location.href) {
+        lastUrl = window.location.href;
+        
+        // Reset for new conversation
+        setTimeout(() => {
+          if (isNewChatContext()) {
+            shownInChats.clear();
+          }
+        }, 300);
       }
-    } catch (e) {
-      console.error('Error setting up observer:', e);
-    }
+    });
     
-    // Additional periodic check for dynamically loaded elements
-    setInterval(setupInputMonitoring, 2000);
+    urlObserver.observe(document.body, { subtree: true, childList: true });
     
-    // Watch for navigation events to handle SPA navigation
-    try {
-      window.addEventListener('popstate', function() {
-        const chatId = getCurrentChatId();
-        if (!shownInChats.has(chatId)) {
-          // Reset for new chat
-          shownInChats.delete(chatId);
-        }
-      });
-    } catch (e) {
-      console.error('Error setting up navigation listener:', e);
-    }
+    console.log(`Creativity Guard initialized for ${currentSite}`);
   }
-} catch (e) {
-  console.error('Error in main extension code:', e);
+} catch (error) {
+  console.error('Error initializing Creativity Guard for AI sites:', error);
 }
 
 // Social media module for LinkedIn, Twitter, and Facebook

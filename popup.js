@@ -108,18 +108,33 @@ function loadSocialMediaSettings() {
       const settings = result.socialMediaUsage;
       
       // Update LinkedIn settings
-      document.getElementById('linkedin-enabled').checked = 
+      document.getElementById('enableLinkedin').checked = 
         settings.enabledForLinkedin !== undefined ? settings.enabledForLinkedin : true;
       
-      document.getElementById('linkedin-hour').value = 
-        settings.linkedinAllowedHour !== undefined ? settings.linkedinAllowedHour : 15;
+      if (document.getElementById('linkedinTime')) {
+        document.getElementById('linkedinTime').value = 
+          formatTime(settings.linkedinAllowedHour !== undefined ? settings.linkedinAllowedHour : 15);
+      }
       
       // Update Twitter settings
-      document.getElementById('twitter-enabled').checked = 
+      document.getElementById('enableTwitter').checked = 
         settings.enabledForTwitter !== undefined ? settings.enabledForTwitter : true;
       
-      document.getElementById('twitter-hour').value = 
-        settings.twitterAllowedHour !== undefined ? settings.twitterAllowedHour : 15;
+      if (document.getElementById('twitterTime')) {
+        document.getElementById('twitterTime').value = 
+          formatTime(settings.twitterAllowedHour !== undefined ? settings.twitterAllowedHour : 15);
+      }
+
+      // Update Facebook settings
+      if (document.getElementById('enableFacebook')) {
+        document.getElementById('enableFacebook').checked = 
+          settings.enabledForFacebook !== undefined ? settings.enabledForFacebook : true;
+      }
+      
+      if (document.getElementById('facebookTime')) {
+        document.getElementById('facebookTime').value = 
+          formatTime(settings.facebookAllowedHour !== undefined ? settings.facebookAllowedHour : 15);
+      }
     }
   });
 }
@@ -144,10 +159,13 @@ function setupButtons() {
   // Social media settings save button
   document.getElementById('save-social-settings').addEventListener('click', function() {
     const settings = {
-      linkedinAllowedHour: parseInt(document.getElementById('linkedin-hour').value),
-      twitterAllowedHour: parseInt(document.getElementById('twitter-hour').value),
-      enabledForLinkedin: document.getElementById('linkedin-enabled').checked,
-      enabledForTwitter: document.getElementById('twitter-enabled').checked,
+      linkedinAllowedHour: parseInt(document.getElementById('linkedinTime').value.split(':')[0]),
+      twitterAllowedHour: parseInt(document.getElementById('twitterTime').value.split(':')[0]),
+      facebookAllowedHour: parseInt(document.getElementById('facebookTime').value.split(':')[0]),
+      enabledForLinkedin: document.getElementById('enableLinkedin').checked,
+      enabledForTwitter: document.getElementById('enableTwitter').checked,
+      enabledForFacebook: document.getElementById('enableFacebook').checked,
+      redirectUrl: document.getElementById('redirectUrl').value || 'https://read.readwise.io',
       visits: {} // Keep visit data from existing settings
     };
     
