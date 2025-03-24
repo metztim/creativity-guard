@@ -723,10 +723,12 @@ const socialMediaModule = {
   },
   
   // Check if current time is allowed for the platform
-  isTimeAllowed: function(platform) {
+  isAllowedTime: function(platform) {
     const now = new Date();
     const hour = now.getHours();
-    const allowedHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour : platform === 'twitter' ? this.settings.twitterAllowedHour : this.settings.facebookAllowedHour;
+    const allowedHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour : 
+                       platform === 'twitter' ? this.settings.twitterAllowedHour : 
+                       this.settings.facebookAllowedHour;
     
     return hour >= allowedHour;
   },
@@ -764,7 +766,9 @@ const socialMediaModule = {
       console.log(`%c[Creativity Guard] Handling ${platform} visit`, 'color: #0a66c2;');
       
       // Check if the feature is enabled for this platform
-      const isEnabled = platform === 'linkedin' ? this.settings.enabledForLinkedin : platform === 'twitter' ? this.settings.enabledForTwitter : this.settings.enabledForFacebook;
+      const isEnabled = platform === 'linkedin' ? this.settings.enabledForLinkedin : 
+                       platform === 'twitter' ? this.settings.enabledForTwitter : 
+                       this.settings.enabledForFacebook;
       console.log(`%c[Creativity Guard] Feature enabled for ${platform}:`, 'color: #0a66c2;', isEnabled);
       
       if (!isEnabled) return;
@@ -780,7 +784,7 @@ const socialMediaModule = {
       console.log(`%c[Creativity Guard] Is weekend:`, 'color: #0a66c2;', isWeekendDay);
       
       // Check time and previous visits
-      const isAllowedTime = this.isTimeAllowed(platform);
+      const isAllowedTime = this.isAllowedTime(platform);
       const hasVisited = this.hasVisitedToday(platform);
       console.log(`%c[Creativity Guard] Time allowed: ${isAllowedTime}, Has visited today: ${hasVisited}`, 'color: #0a66c2;');
       
