@@ -178,6 +178,52 @@ const siteHandlers = {
       setTimeout(callback, 1000);
     }
   },
+  'chatgpt.com': {
+    setupReminder: function(inputElement, host) {
+      console.log('ChatGPT: Setting up reminder with Claude-like approach');
+      
+      // Style the host element to look good in ChatGPT
+      host.style.margin = '15px auto';
+      host.style.maxWidth = '800px';
+      host.style.borderRadius = '8px';
+      host.style.padding = '10px 15px';
+      host.style.boxShadow = '0 0 10px rgba(0,0,0,0.1)';
+      host.style.backgroundColor = 'rgba(247, 247, 248, 0.9)';
+      host.style.zIndex = '1000';
+      
+      // Place it at the top of the main content area
+      const targets = [
+        document.querySelector('main'),
+        document.querySelector('#__next'),
+        document.querySelector('body')
+      ];
+      
+      for (const target of targets) {
+        if (target) {
+          console.log('ChatGPT: Inserting reminder into', target.tagName);
+          target.insertBefore(host, target.firstChild);
+          return true;
+        }
+      }
+      
+      // Absolute last resort
+      document.body.insertBefore(host, document.body.firstChild);
+      return true;
+    },
+    
+    getInputElement: function() {
+      // This is much simpler - we're not actually using this for triggering
+      // but we need to return something for compatibility
+      return document.querySelector('textarea') || document.querySelector('form');
+    },
+    
+    monitorInput: function(callback) {
+      // Skip all the complex event handling - just call the callback immediately
+      // to show the reminder as soon as the page loads
+      console.log('ChatGPT: Triggering reminder immediately');
+      setTimeout(callback, 1000);
+    }
+  },
   'claude.ai': {
     setupReminder: function(inputElement, host) {
       const container = inputElement.closest('.cl-text-container');
@@ -491,9 +537,21 @@ function showReflectionModal() {
       function getCurrentChatId() {
         try {
           // For ChatGPT, use the conversation ID from URL
-          if (currentSite === 'chat.openai.com') {
-            const match = window.location.pathname.match(/\/c\/([\w-]+)/);
-            return match ? match[1] : window.location.pathname;
+          if (currentSite === 'chat.openai.com' || currentSite === 'chatgpt.com') {
+            // Handle chat ID format: /c/{id}
+            const chatMatch = window.location.pathname.match(/\/c\/([\w-]+)/);
+            if (chatMatch) {
+              return chatMatch[1];
+            }
+            
+            // Handle model parameter format: /?model={model}
+            const modelMatch = new URLSearchParams(window.location.search).get('model');
+            if (modelMatch) {
+              return `model-${modelMatch}`;
+            }
+            
+            // Fallback to pathname
+            return window.location.pathname || 'home';
           }
           // For other platforms, use the full pathname as the ID
           return window.location.pathname;
