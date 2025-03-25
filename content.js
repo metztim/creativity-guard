@@ -708,8 +708,8 @@ function showReflectionModal() {
       
       // Load previously shown chats from storage
       function loadShownChats(callback) {
-        chrome.storage.local.get('shownReminderChats', (result) => {
-          const shownChats = result.shownReminderChats || {};
+        storage.get('shownReminderChats', function(result) {
+          const shownChats = result || {};
           callback(shownChats);
         });
       }
@@ -729,7 +729,7 @@ function showReflectionModal() {
           });
           
           // Save back to storage
-          chrome.storage.local.set({ 'shownReminderChats': shownChats });
+          storage.set('shownReminderChats', shownChats);
         });
       }
       
