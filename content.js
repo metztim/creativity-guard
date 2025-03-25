@@ -226,22 +226,107 @@ const siteHandlers = {
   },
   'claude.ai': {
     setupReminder: function(inputElement, host) {
-      const container = inputElement.closest('.cl-text-container');
+      console.log('Claude: Setting up reminder...');
+      const container = document.querySelector('.cl-text-container') || 
+                        document.querySelector('.text-container') || 
+                        document.querySelector('main') || 
+                        document.body;
+                        
+      console.log('Claude: Container found:', container);
+      
+      // Make sure we have a valid container
       if (container) {
-        container.insertBefore(host, container.firstChild);
+        const wrapper = document.createElement('div');
+        wrapper.style.padding = '10px';
+        wrapper.style.margin = '10px 0';
+        wrapper.style.backgroundColor = 'rgba(247, 247, 248, 0.9)';
+        wrapper.style.borderRadius = '8px';
+        wrapper.style.border = '1px solid #e5e5e5';
+        wrapper.style.maxWidth = '100%';
+        wrapper.appendChild(host);
+        
+        container.insertBefore(wrapper, container.firstChild);
+        console.log('Claude: Reminder inserted successfully');
         return true;
       }
-      return false;
+      
+      document.body.insertBefore(host, document.body.firstChild);
+      console.log('Claude: Used fallback insertion');
+      return true;
     },
+    
     getInputElement: function() {
-      return document.querySelector('[contenteditable="true"]');
+      console.log('Claude: Finding input element');
+      
+      // Try multiple possible selectors for Claude
+      const selectors = [
+        '[contenteditable="true"]',
+        '.cl-input',
+        '.text-area',
+        'textarea',
+        '.cl-text-container div[data-slate-editor="true"]'
+      ];
+      
+      for (const selector of selectors) {
+        const elements = document.querySelectorAll(selector);
+        for (const el of elements) {
+          // Skip hidden elements or elements with zero width/height
+          if (el.offsetWidth > 0 && el.offsetHeight > 0 && 
+              window.getComputedStyle(el).display !== 'none' &&
+              window.getComputedStyle(el).visibility !== 'hidden') {
+            console.log(`Claude: Found input element using selector: ${selector}`);
+            return el;
+          }
+        }
+      }
+      
+      console.log('Claude: No input element found');
+      return null;
     },
+    
     monitorInput: function(callback) {
+      console.log('Claude: Setting up input monitoring');
+      
+      // Try to get the input immediately
       const input = this.getInputElement();
       if (input) {
-        input.addEventListener('focus', callback);
-        input.addEventListener('input', callback);
+        console.log('Claude: Setting up input listeners');
+        this.setupListeners(input, callback);
+      } else {
+        console.log('Claude: Input not found, will retry');
       }
+      
+      // Also set up URL monitoring for new conversations
+      const urlObserver = new MutationObserver(() => {
+        // Find a new input element after URL/DOM changes
+        const newInput = this.getInputElement();
+        if (newInput && !newInput.hasAttribute('creativity-guard-monitored')) {
+          this.setupListeners(newInput, callback);
+        }
+      });
+      
+      urlObserver.observe(document.body, { 
+        childList: true, 
+        subtree: true,
+        attributes: true
+      });
+      
+      // Call the callback to show the reminder immediately for new chat
+      setTimeout(callback, 500);
+    },
+    
+    setupListeners: function(element, callback) {
+      if (!element || element.hasAttribute('creativity-guard-monitored')) {
+        return;
+      }
+      
+      element.setAttribute('creativity-guard-monitored', 'true');
+      console.log('Claude: Added event listeners to input');
+      
+      // Add event listeners for various interactions
+      ['focus', 'click', 'input', 'keydown'].forEach(eventType => {
+        element.addEventListener(eventType, callback);
+      });
     }
   },
   'typingmind.com': {
@@ -530,9 +615,6 @@ function showReflectionModal() {
       console.log(`Initializing for ${currentSite}`);
       const handler = siteHandlers[currentSite];
       
-      // Track chats where modal has been shown
-      const shownInChats = new Set();
-      
       // Function to get current chat ID
       function getCurrentChatId() {
         try {
@@ -553,6 +635,18 @@ function showReflectionModal() {
             // Fallback to pathname
             return window.location.pathname || 'home';
           }
+          
+          // For Claude, handle /new path and conversation IDs
+          if (currentSite === 'claude.ai') {
+            if (window.location.pathname === '/new' || window.location.pathname === '/') {
+              return 'new-conversation';
+            }
+            const claudeMatch = window.location.pathname.match(/\/chat\/([\w-]+)/);
+            if (claudeMatch) {
+              return claudeMatch[1];
+            }
+          }
+          
           // For other platforms, use the full pathname as the ID
           return window.location.pathname;
         } catch (e) {
@@ -561,21 +655,82 @@ function showReflectionModal() {
         }
       }
       
-      // Function to check if this is a new chat context
-      function isNewChatContext() {
+      // Function to check if this is a new conversation by examining URL and page elements
+      function isNewConversation() {
         try {
-          const inputElement = handler.getInputElement();
-          if (!inputElement) return false;
+          const currentPath = window.location.pathname;
           
-          // Get current input content
-          const currentInputContent = inputElement.value || inputElement.textContent || '';
+          // For ChatGPT
+          if (currentSite === 'chat.openai.com' || currentSite === 'chatgpt.com') {
+            // Check if we're at the root or new chat page
+            if (currentPath === '/' || !currentPath.includes('/c/')) {
+              return true;
+            }
+            
+            // Check if the input is empty (new conversation)
+            const input = handler.getInputElement();
+            if (input && (!input.value || input.value === '')) {
+              return true;
+            }
+          }
           
-          // Check if input was cleared (new chat started)
-          return currentInputContent === '';
+          // For Claude
+          if (currentSite === 'claude.ai') {
+            // New conversation page
+            if (currentPath === '/new' || currentPath === '/') {
+              return true;
+            }
+            
+            // Check for empty input
+            const input = handler.getInputElement();
+            if (input && (!input.textContent || input.textContent === '')) {
+              return true;
+            }
+          }
+          
+          // For TypingMind and others
+          if (currentSite === 'typingmind.com') {
+            const input = handler.getInputElement();
+            if (input && (!input.value && !input.textContent)) {
+              return true;
+            }
+          }
+          
+          return false;
         } catch (e) {
-          console.error('Error checking chat context:', e);
+          console.error('Error checking for new conversation:', e);
           return false;
         }
+      }
+      
+      // Keep track of which chats we've shown the reminder in during this session
+      let shownInChatsForSession = new Set();
+      
+      // Load previously shown chats from storage
+      function loadShownChats(callback) {
+        chrome.storage.local.get('shownReminderChats', (result) => {
+          const shownChats = result.shownReminderChats || {};
+          callback(shownChats);
+        });
+      }
+      
+      // Save shown chat to storage
+      function saveShownChat(chatId) {
+        loadShownChats((shownChats) => {
+          // Add the current chat with a timestamp
+          shownChats[chatId] = Date.now();
+          
+          // Remove chats older than 24 hours
+          const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+          Object.keys(shownChats).forEach(id => {
+            if (shownChats[id] < oneDayAgo) {
+              delete shownChats[id];
+            }
+          });
+          
+          // Save back to storage
+          chrome.storage.local.set({ 'shownReminderChats': shownChats });
+        });
       }
       
       // Function to handle potential AI interaction
@@ -583,23 +738,40 @@ function showReflectionModal() {
         try {
           console.log(`AI interaction detected from ${event?.type || 'unknown'} event`);
           const chatId = getCurrentChatId();
+          console.log(`Current chat ID: ${chatId}`);
           
-          // Skip if already shown in this chat
-          if (shownInChats.has(chatId)) {
-            console.log(`Already shown reminder for chat: ${chatId}`);
+          // Skip if already shown in this session
+          if (shownInChatsForSession.has(chatId)) {
+            console.log(`Already shown reminder for chat in this session: ${chatId}`);
             return;
           }
           
-          console.log(`Showing reminder for chat: ${chatId}`);
-          showReflectionModal();
-          shownInChats.add(chatId);
-          
-          // Save updated stats to storage
-          storage.get('creativityGuardStats', function(result) {
-            const updatedStats = result ? result : { ...stats };
-            updatedStats.aiUsageCount++;
-            storage.set('creativityGuardStats', updatedStats);
-            stats = updatedStats;
+          // Check storage to see if we've shown this chat recently
+          loadShownChats((shownChats) => {
+            if (shownChats[chatId]) {
+              console.log(`Already shown reminder for chat in storage: ${chatId}`);
+              return;
+            }
+            
+            // Check if this is a new conversation
+            if (isNewConversation()) {
+              console.log(`Showing reminder for new conversation: ${chatId}`);
+              showReflectionModal();
+              
+              // Mark as shown in both session and storage
+              shownInChatsForSession.add(chatId);
+              saveShownChat(chatId);
+              
+              // Save updated stats to storage
+              storage.get('creativityGuardStats', function(result) {
+                const updatedStats = result ? result : { ...stats };
+                updatedStats.aiUsageCount++;
+                storage.set('creativityGuardStats', updatedStats);
+                stats = updatedStats;
+              });
+            } else {
+              console.log(`Not showing reminder for existing conversation: ${chatId}`);
+            }
           });
         } catch (e) {
           console.error('Error handling AI interaction:', e);
@@ -617,20 +789,31 @@ function showReflectionModal() {
           console.log(`URL changed from ${lastUrl} to ${window.location.href}`);
           lastUrl = window.location.href;
           
-          // Reset for new conversation
+          // Check if this is a new conversation and trigger reminder if needed
           setTimeout(() => {
-            if (isNewChatContext()) {
-              console.log('New chat context detected, clearing shown chats');
-              shownInChats.clear();
-            }
-          }, 300);
+            handleAIInteraction({ type: 'url-change' });
+          }, 500);
         }
       });
       
       urlObserver.observe(document.body, { subtree: true, childList: true });
       
-      // Check once after initialization
-      setTimeout(handleAIInteraction, 1000, {type: 'init'});
+      // Check once after initialization with a slight delay
+      setTimeout(() => {
+        handleAIInteraction({ type: 'init' });
+        
+        // Also set up a retry mechanism for cases where the UI loads slowly
+        const retryTimes = [1000, 3000, 5000];
+        retryTimes.forEach(delay => {
+          setTimeout(() => {
+            // Only retry if we haven't shown a reminder yet
+            if (!shownInChatsForSession.has(getCurrentChatId()) && isNewConversation()) {
+              console.log(`Retry ${delay}ms: Checking for new conversation`);
+              handleAIInteraction({ type: 'retry' });
+            }
+          }, delay);
+        });
+      }, 1000);
       
       console.log(`Creativity Guard fully initialized for ${currentSite}`);
     };
@@ -643,7 +826,18 @@ function showReflectionModal() {
       // Otherwise wait for load event
       console.log('Waiting for window load event');
       window.addEventListener('load', startInit);
+      
+      // Also try again after a short delay if the load event doesn't fire
+      setTimeout(() => {
+        if (document.readyState === 'complete' && !window.aiSiteHandlersInitialized) {
+          console.log('Initializing after delay');
+          startInit();
+        }
+      }, 2000);
     }
+    
+    // Flag to prevent double initialization
+    window.aiSiteHandlersInitialized = true;
   } catch (error) {
     console.error('Error initializing Creativity Guard for AI sites:', error);
   }
