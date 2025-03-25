@@ -134,113 +134,48 @@ function getRandomSuggestion() {
 const siteHandlers = {
   'chat.openai.com': {
     setupReminder: function(inputElement, host) {
-      console.log('ChatGPT: Setting up reminder with simplified approach');
+      console.log('ChatGPT: Setting up reminder with Claude-like approach');
       
-      // Try direct container approach
-      const container = document.querySelector('main');
-      if (container) {
-        console.log('ChatGPT: Found main container');
-        // Create a wrapper div that matches ChatGPT's styling
-        const wrapper = document.createElement('div');
-        wrapper.style.maxWidth = '48rem';
-        wrapper.style.margin = '0 auto';
-        wrapper.style.padding = '1rem';
-        wrapper.style.zIndex = '1000';
-        wrapper.style.position = 'relative';
-        wrapper.appendChild(host);
-        
-        // Insert at the top of the container
-        container.insertBefore(wrapper, container.firstChild);
-        console.log('ChatGPT: Inserted reminder at top of main');
-        return true;
+      // Style the host element to look good in ChatGPT
+      host.style.margin = '15px auto';
+      host.style.maxWidth = '800px';
+      host.style.borderRadius = '8px';
+      host.style.padding = '10px 15px';
+      host.style.boxShadow = '0 0 10px rgba(0,0,0,0.1)';
+      host.style.backgroundColor = 'rgba(247, 247, 248, 0.9)';
+      host.style.zIndex = '1000';
+      
+      // Place it at the top of the main content area
+      const targets = [
+        document.querySelector('main'),
+        document.querySelector('#__next'),
+        document.querySelector('body')
+      ];
+      
+      for (const target of targets) {
+        if (target) {
+          console.log('ChatGPT: Inserting reminder into', target.tagName);
+          target.insertBefore(host, target.firstChild);
+          return true;
+        }
       }
       
-      // Fallback to form
-      const form = document.querySelector('form');
-      if (form && form.parentElement) {
-        console.log('ChatGPT: Using form fallback');
-        form.parentElement.insertBefore(host, form);
-        return true;
-      }
-      
-      console.log('ChatGPT: Using document body fallback');
+      // Absolute last resort
       document.body.insertBefore(host, document.body.firstChild);
       return true;
     },
     
     getInputElement: function() {
-      // Try most reliable selectors first
-      const selectors = [
-        'textarea[placeholder*="Send a message"]',
-        '#prompt-textarea',
-        'form textarea'
-      ];
-      
-      for (const selector of selectors) {
-        const element = document.querySelector(selector);
-        if (element) {
-          console.log(`ChatGPT: Found input with selector: ${selector}`);
-          return element;
-        }
-      }
-      
-      console.log('ChatGPT: No input element found');
-      return null;
+      // This is much simpler - we're not actually using this for triggering
+      // but we need to return something for compatibility
+      return document.querySelector('textarea') || document.querySelector('form');
     },
     
     monitorInput: function(callback) {
-      console.log('ChatGPT: Setting up simplified input monitoring');
-      
-      // Get the input element
-      const input = this.getInputElement();
-      if (!input) {
-        console.log('ChatGPT: No input element found for monitoring');
-        
-        // Try again after a delay
-        setTimeout(() => {
-          const delayedInput = this.getInputElement();
-          if (delayedInput) {
-            console.log('ChatGPT: Found input element after delay');
-            this.setupListeners(delayedInput, callback);
-            
-            // Manually trigger once
-            setTimeout(callback, 500);
-          }
-        }, 1000);
-        return;
-      }
-      
-      this.setupListeners(input, callback);
-      
-      // Manually trigger once
-      setTimeout(callback, 500);
-    },
-    
-    setupListeners: function(element, callback) {
-      if (!element || element.hasAttribute('creativity-guard-monitored')) return;
-      
-      console.log('ChatGPT: Setting up listeners');
-      element.setAttribute('creativity-guard-monitored', 'true');
-      
-      // Use simpler event listening like Claude
-      ['focus', 'input', 'click'].forEach(eventType => {
-        element.addEventListener(eventType, callback);
-      });
-      
-      // Also monitor the form submission
-      const form = element.closest('form');
-      if (form) {
-        form.addEventListener('submit', callback);
-      }
-      
-      // Add document-level focus event
-      if (!document.body.hasAttribute('creativity-guard-monitored')) {
-        document.body.setAttribute('creativity-guard-monitored', 'true');
-        document.addEventListener('focus', () => {
-          const input = this.getInputElement();
-          if (input) callback();
-        }, true);
-      }
+      // Skip all the complex event handling - just call the callback immediately
+      // to show the reminder as soon as the page loads
+      console.log('ChatGPT: Triggering reminder immediately');
+      setTimeout(callback, 1000);
     }
   },
   'claude.ai': {
@@ -265,93 +200,49 @@ const siteHandlers = {
   },
   'typingmind.com': {
     setupReminder: function(inputElement, host) {
-      console.log('TypingMind: Setting up reminder with simplified approach');
+      console.log('TypingMind: Setting up reminder with Claude-like approach');
       
-      // Try the main content area first
-      const container = document.querySelector('main') || 
-                       document.querySelector('.chat-container') || 
-                       document.querySelector('.chat-box');
+      // Style the host element to look good in TypingMind
+      host.style.margin = '15px auto';
+      host.style.maxWidth = '800px';
+      host.style.borderRadius = '8px';
+      host.style.padding = '10px 15px';
+      host.style.boxShadow = '0 0 10px rgba(0,0,0,0.1)';
+      host.style.backgroundColor = 'rgba(247, 247, 248, 0.9)';
+      host.style.zIndex = '1000';
       
-      if (container) {
-        console.log('TypingMind: Found container');
-        container.insertBefore(host, container.firstChild);
-        return true;
+      // Place it at the top of the main content area
+      const targets = [
+        document.querySelector('.chat-box'),
+        document.querySelector('.chatbox'),
+        document.querySelector('main'),
+        document.querySelector('body')
+      ];
+      
+      for (const target of targets) {
+        if (target) {
+          console.log('TypingMind: Inserting reminder into', target.tagName || target.className);
+          target.insertBefore(host, target.firstChild);
+          return true;
+        }
       }
       
-      // Fallback to body
-      console.log('TypingMind: Using body fallback');
+      // Absolute last resort
       document.body.insertBefore(host, document.body.firstChild);
       return true;
     },
     
     getInputElement: function() {
-      // Try the most reliable selectors first
-      const selectors = [
-        '.cm-content',
-        'textarea',
-        '[contenteditable="true"]'
-      ];
-      
-      for (const selector of selectors) {
-        const element = document.querySelector(selector);
-        if (element && element.offsetWidth > 0 && element.offsetHeight > 0) {
-          console.log(`TypingMind: Found input with selector: ${selector}`);
-          return element;
-        }
-      }
-      
-      console.log('TypingMind: No input element found');
-      return null;
+      // This is much simpler - we're not actually using this for triggering
+      // but we need to return something for compatibility
+      return document.querySelector('.cm-content') || document.querySelector('textarea');
     },
     
     monitorInput: function(callback) {
-      console.log('TypingMind: Setting up simplified input monitoring');
-      
-      // Get the input element
-      const input = this.getInputElement();
-      if (!input) {
-        console.log('TypingMind: No input element found for monitoring');
-        
-        // Try again after a delay
-        setTimeout(() => {
-          const delayedInput = this.getInputElement();
-          if (delayedInput) {
-            console.log('TypingMind: Found input element after delay');
-            this.setupListeners(delayedInput, callback);
-            
-            // Manually trigger once
-            setTimeout(callback, 500);
-          }
-        }, 1000);
-        return;
-      }
-      
-      this.setupListeners(input, callback);
-      
-      // Manually trigger once after a delay
-      setTimeout(callback, 500);
-    },
-    
-    setupListeners: function(element, callback) {
-      if (!element || !element.addEventListener) return;
-      
-      try {
-        console.log('TypingMind: Setting up listeners');
-        
-        // Use simpler event listening like Claude
-        ['focus', 'input', 'click'].forEach(eventType => {
-          element.addEventListener(eventType, callback);
-        });
-        
-        // Add document-level event
-        document.addEventListener('click', (e) => {
-          // Check if the click was on or near the input area
-          const input = this.getInputElement();
-          if (input) callback();
-        }, true);
-      } catch (e) {
-        console.error('TypingMind: Error setting up listeners:', e);
-      }
+      // Skip all the complex event handling - just call the callback immediately
+      // to show the reminder as soon as the page loads
+      console.log('TypingMind: Triggering reminder immediately');
+      setTimeout(callback, 1000);
     }
   }
 };
@@ -568,8 +459,21 @@ function showReflectionModal() {
     
     // Function to start initialization
     const startInit = () => {
-      // Determine which site we're on
-      const currentSite = Object.keys(siteHandlers).find(site => window.location.hostname.includes(site));
+      // Log all supported sites
+      console.log('Supported sites:', Object.keys(siteHandlers));
+      
+      // Get the current hostname
+      const currentHostname = window.location.hostname;
+      console.log('Current hostname:', currentHostname);
+      
+      // Determine which site we're on - trying exact match first
+      let currentSite = Object.keys(siteHandlers).find(site => currentHostname === site);
+      
+      // If exact match failed, try includes
+      if (!currentSite) {
+        currentSite = Object.keys(siteHandlers).find(site => currentHostname.includes(site));
+      }
+      
       console.log('Detected site:', currentSite);
       
       if (!currentSite) {
