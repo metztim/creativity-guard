@@ -659,41 +659,72 @@ function showReflectionModal() {
       function isNewConversation() {
         try {
           const currentPath = window.location.pathname;
+          const currentUrl = window.location.href;
+          
+          // Skip non-chat pages (settings, projects, etc.)
+          if (currentPath.includes('/settings') || 
+              currentPath.includes('/project') || 
+              currentPath.includes('/account') ||
+              currentPath.includes('/workspace') ||
+              currentPath.includes('/u/') ||
+              currentPath.includes('/billing') ||
+              currentPath.includes('/profile')) {
+            console.log('Skipping non-chat page:', currentPath);
+            return false;
+          }
           
           // For ChatGPT
           if (currentSite === 'chat.openai.com' || currentSite === 'chatgpt.com') {
             // Check if we're at the root or new chat page
-            if (currentPath === '/' || !currentPath.includes('/c/')) {
+            if (currentPath === '/' && !currentUrl.includes('?model=')) {
+              // Root without model param is usually the landing page
+              return false;
+            }
+            
+            // New conversation URLs
+            if (currentPath === '/') {
               return true;
             }
             
-            // Check if the input is empty (new conversation)
-            const input = handler.getInputElement();
-            if (input && (!input.value || input.value === '')) {
+            // New GPT-specific conversation
+            if (currentPath.startsWith('/g/') && !currentPath.includes('/c/')) {
               return true;
             }
+            
+            // Regular conversations have /c/{id} pattern - these are not new
+            if (currentPath.includes('/c/')) {
+              return false;
+            }
+            
+            return false;
           }
           
           // For Claude
           if (currentSite === 'claude.ai') {
-            // New conversation page
-            if (currentPath === '/new' || currentPath === '/') {
+            // Only show on actual new chat page
+            if (currentPath === '/new') {
               return true;
             }
             
-            // Check for empty input
-            const input = handler.getInputElement();
-            if (input && (!input.textContent || input.textContent === '')) {
-              return true;
+            // On home page, only show when there's a clear input element ready
+            if (currentPath === '/') {
+              const input = handler.getInputElement();
+              if (input && input.offsetHeight > 0 && input.offsetWidth > 0) {
+                return true;
+              }
             }
+            
+            // Skip all other Claude pages
+            return false;
           }
           
           // For TypingMind and others
           if (currentSite === 'typingmind.com') {
-            const input = handler.getInputElement();
-            if (input && (!input.value && !input.textContent)) {
+            // Only show on the new chat page
+            if (currentPath === '/chat/new') {
               return true;
             }
+            return false;
           }
           
           return false;
@@ -785,35 +816,53 @@ function showReflectionModal() {
       // Monitor URL changes for new conversations in SPA
       let lastUrl = window.location.href;
       const urlObserver = new MutationObserver(() => {
-        if (lastUrl !== window.location.href) {
-          console.log(`URL changed from ${lastUrl} to ${window.location.href}`);
-          lastUrl = window.location.href;
+        const currentUrl = window.location.href;
+        if (lastUrl !== currentUrl) {
+          console.log(`URL changed from ${lastUrl} to ${currentUrl}`);
+          lastUrl = currentUrl;
           
-          // Check if this is a new conversation and trigger reminder if needed
+          // Only check if it's a new conversation, don't trigger on every URL change
           setTimeout(() => {
-            handleAIInteraction({ type: 'url-change' });
+            if (isNewConversation()) {
+              console.log('URL change detected to a new conversation page');
+              handleAIInteraction({ type: 'url-change' });
+            } else {
+              console.log('URL change detected but not a new conversation');
+            }
           }, 500);
         }
       });
       
       urlObserver.observe(document.body, { subtree: true, childList: true });
       
-      // Check once after initialization with a slight delay
+      // Check once after initialization with a more specific delay
       setTimeout(() => {
-        handleAIInteraction({ type: 'init' });
+        // Only show if it's actually a new conversation
+        if (isNewConversation()) {
+          console.log('Initial check: Found new conversation');
+          handleAIInteraction({ type: 'init' });
+        } else {
+          console.log('Initial check: Not a new conversation');
+        }
         
-        // Also set up a retry mechanism for cases where the UI loads slowly
-        const retryTimes = [1000, 3000, 5000];
-        retryTimes.forEach(delay => {
-          setTimeout(() => {
-            // Only retry if we haven't shown a reminder yet
-            if (!shownInChatsForSession.has(getCurrentChatId()) && isNewConversation()) {
-              console.log(`Retry ${delay}ms: Checking for new conversation`);
-              handleAIInteraction({ type: 'retry' });
-            }
-          }, delay);
-        });
-      }, 1000);
+        // Only do retries on specific paths that are likely to be new conversations
+        const currentPath = window.location.pathname;
+        if ((currentSite === 'claude.ai' && (currentPath === '/new' || currentPath === '/')) ||
+            ((currentSite === 'chat.openai.com' || currentSite === 'chatgpt.com') && currentPath === '/') ||
+            (currentSite === 'typingmind.com' && currentPath === '/chat/new')) {
+            
+          console.log('Setting up retries for new conversation page');
+          const retryTimes = [2000, 4000];
+          retryTimes.forEach(delay => {
+            setTimeout(() => {
+              if (!shownInChatsForSession.has(getCurrentChatId()) && isNewConversation()) {
+                console.log(`Retry ${delay}ms: Checking for new conversation`);
+                handleAIInteraction({ type: 'retry' });
+              }
+            }, delay);
+          });
+        }
+      }, 1500);
       
       console.log(`Creativity Guard fully initialized for ${currentSite}`);
     };
