@@ -1,3 +1,14 @@
+// Helper functions for time conversion
+function formatTime(hour) {
+  return `${hour.toString().padStart(2, '0')}:00`;
+}
+
+function parseTime(timeString) {
+  if (!timeString) return 15; // Default to 3 PM if empty
+  const parts = timeString.split(':');
+  return parseInt(parts[0], 10);
+}
+
 // Load stats when popup opens
 document.addEventListener('DOMContentLoaded', function() {
   // Set up tab navigation
@@ -21,6 +32,7 @@ document.addEventListener('DOMContentLoaded', function() {
       enabledForLinkedin: true,
       enabledForTwitter: true,
       enabledForFacebook: true,
+      totalWeekendBlock: true,
       redirectUrl: 'https://read.readwise.io'
     };
 
@@ -31,6 +43,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('enableLinkedin').checked = settings.enabledForLinkedin;
     document.getElementById('enableTwitter').checked = settings.enabledForTwitter;
     document.getElementById('enableFacebook').checked = settings.enabledForFacebook;
+    document.getElementById('totalWeekendBlock').checked = settings.totalWeekendBlock !== undefined ? settings.totalWeekendBlock : true;
     document.getElementById('redirectUrl').value = settings.redirectUrl || 'https://read.readwise.io';
   });
 
@@ -47,16 +60,12 @@ document.addEventListener('DOMContentLoaded', function() {
       enabledForLinkedin: document.getElementById('enableLinkedin').checked,
       enabledForTwitter: document.getElementById('enableTwitter').checked,
       enabledForFacebook: document.getElementById('enableFacebook').checked,
+      totalWeekendBlock: document.getElementById('totalWeekendBlock').checked,
       redirectUrl: document.getElementById('redirectUrl').value || 'https://read.readwise.io'
     };
 
     chrome.storage.local.set({ socialMediaSettings: settings });
   };
-
-  // Helper function to format time
-  function formatTime(hour) {
-    return `${hour.toString().padStart(2, '0')}:00`;
-  }
 
   // Add event listeners
   document.getElementById('linkedinTime').addEventListener('change', saveSettings);
@@ -65,6 +74,7 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('enableLinkedin').addEventListener('change', saveSettings);
   document.getElementById('enableTwitter').addEventListener('change', saveSettings);
   document.getElementById('enableFacebook').addEventListener('change', saveSettings);
+  document.getElementById('totalWeekendBlock').addEventListener('change', saveSettings);
   document.getElementById('redirectUrl').addEventListener('change', saveSettings);
   document.getElementById('redirectUrl').addEventListener('input', saveSettings);
 });
@@ -103,41 +113,91 @@ function loadAIStats() {
 
 // Load social media settings
 function loadSocialMediaSettings() {
-  chrome.storage.local.get(['socialMediaUsage'], function(result) {
-    if (result.socialMediaUsage) {
-      const settings = result.socialMediaUsage;
-      
-      // Update LinkedIn settings
-      document.getElementById('enableLinkedin').checked = 
-        settings.enabledForLinkedin !== undefined ? settings.enabledForLinkedin : true;
-      
-      if (document.getElementById('linkedinTime')) {
-        document.getElementById('linkedinTime').value = 
-          formatTime(settings.linkedinAllowedHour !== undefined ? settings.linkedinAllowedHour : 15);
-      }
-      
-      // Update Twitter settings
-      document.getElementById('enableTwitter').checked = 
-        settings.enabledForTwitter !== undefined ? settings.enabledForTwitter : true;
-      
-      if (document.getElementById('twitterTime')) {
-        document.getElementById('twitterTime').value = 
-          formatTime(settings.twitterAllowedHour !== undefined ? settings.twitterAllowedHour : 15);
-      }
+  chrome.runtime.sendMessage({ type: 'GET_SOCIAL_MEDIA_SETTINGS' }, (settings) => {
+    if (chrome.runtime.lastError) {
+      console.error('Error getting social media settings:', chrome.runtime.lastError);
+      return;
+    }
+    // Ensure settings is an object, even if null/undefined is returned
+    settings = settings || {}; 
+    
+    // Set default values if they don't exist
+    const defaults = {
+      linkedinAllowedHour: 15,
+      twitterAllowedHour: 15,
+      facebookAllowedHour: 15,
+      enabledForLinkedin: true,
+      enabledForTwitter: true,
+      enabledForFacebook: true,
+      totalWeekendBlock: true,
+      vacationModeEnabled: false, // Added default
+      redirectUrl: 'https://read.readwise.io',
+    };
+    
+    settings = { ...defaults, ...settings }; // Merge defaults with loaded settings
+    
+    // Update UI elements
+    document.getElementById('enableLinkedin').checked = settings.enabledForLinkedin;
+    document.getElementById('linkedinTime').value = formatTime(settings.linkedinAllowedHour);
+    document.getElementById('enableTwitter').checked = settings.enabledForTwitter;
+    document.getElementById('twitterTime').value = formatTime(settings.twitterAllowedHour);
+    document.getElementById('enableFacebook').checked = settings.enabledForFacebook;
+    document.getElementById('facebookTime').value = formatTime(settings.facebookAllowedHour);
+    document.getElementById('totalWeekendBlock').checked = settings.totalWeekendBlock;
+    document.getElementById('vacationMode').checked = settings.vacationModeEnabled; // Load vacation mode state
+    document.getElementById('redirectUrl').value = settings.redirectUrl;
+  });
+}
 
-      // Update Facebook settings
-      if (document.getElementById('enableFacebook')) {
-        document.getElementById('enableFacebook').checked = 
-          settings.enabledForFacebook !== undefined ? settings.enabledForFacebook : true;
-      }
-      
-      if (document.getElementById('facebookTime')) {
-        document.getElementById('facebookTime').value = 
-          formatTime(settings.facebookAllowedHour !== undefined ? settings.facebookAllowedHour : 15);
-      }
+// Function to save social media settings
+function saveSocialMediaSettings() {
+  const settings = {
+    enabledForLinkedin: document.getElementById('enableLinkedin').checked,
+    linkedinAllowedHour: parseTime(document.getElementById('linkedinTime').value),
+    enabledForTwitter: document.getElementById('enableTwitter').checked,
+    twitterAllowedHour: parseTime(document.getElementById('twitterTime').value),
+    enabledForFacebook: document.getElementById('enableFacebook').checked,
+    facebookAllowedHour: parseTime(document.getElementById('facebookTime').value),
+    totalWeekendBlock: document.getElementById('totalWeekendBlock').checked,
+    vacationModeEnabled: document.getElementById('vacationMode').checked, // Save vacation mode state
+    redirectUrl: document.getElementById('redirectUrl').value || 'https://read.readwise.io' // Add default if empty
+  };
+
+  // Send message to background script to save settings
+  chrome.runtime.sendMessage({ type: 'SET_SOCIAL_MEDIA_SETTINGS', settings: settings }, (response) => {
+    if (chrome.runtime.lastError) {
+      console.error('Error saving social media settings:', chrome.runtime.lastError);
+    } else if (response && response.success) {
+      console.log('Social media settings saved successfully.');
+      // Optional: Show a confirmation message to the user
+      const saveButton = document.getElementById('save-social-settings');
+      saveButton.textContent = 'Saved!';
+      setTimeout(() => { saveButton.textContent = 'Save Settings'; }, 1500);
+    } else {
+      console.error('Failed to save social media settings.');
     }
   });
 }
+
+// Add event listeners for social media settings changes
+['enableLinkedin', 'linkedinTime', 'enableTwitter', 'twitterTime', 
+ 'enableFacebook', 'facebookTime', 'totalWeekendBlock', 'vacationMode', 'redirectUrl']
+ .forEach(id => {
+   const element = document.getElementById(id);
+   if (element) {
+     element.addEventListener('change', saveSocialMediaSettings); // Save automatically on change
+   } else {
+     console.warn(`Element with ID ${id} not found for event listener.`);
+   }
+ });
+
+// Remove the dedicated save button listener as we save on change now
+// const saveSocialButton = document.getElementById('save-social-settings');
+// if (saveSocialButton) {
+//   saveSocialButton.addEventListener('click', saveSocialMediaSettings);
+// } else {
+//   console.warn('Save social settings button not found.');
+// }
 
 // Set up all button event handlers
 function setupButtons() {
@@ -165,6 +225,8 @@ function setupButtons() {
       enabledForLinkedin: document.getElementById('enableLinkedin').checked,
       enabledForTwitter: document.getElementById('enableTwitter').checked,
       enabledForFacebook: document.getElementById('enableFacebook').checked,
+      totalWeekendBlock: document.getElementById('totalWeekendBlock').checked,
+      vacationModeEnabled: document.getElementById('vacationMode').checked, // Add vacation mode setting
       redirectUrl: document.getElementById('redirectUrl').value || 'https://read.readwise.io',
       visits: {} // Keep visit data from existing settings
     };
@@ -178,6 +240,15 @@ function setupButtons() {
       // Save the updated settings
       chrome.storage.local.set({socialMediaUsage: settings}, function() {
         showSaveMessage('Settings saved!');
+      });
+      
+      // Also save settings using the background script method to ensure consistency
+      chrome.runtime.sendMessage({ type: 'SET_SOCIAL_MEDIA_SETTINGS', settings: settings }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.error('Error saving social media settings:', chrome.runtime.lastError);
+        } else if (response && response.success) {
+          console.log('Social media settings saved successfully via background.');
+        }
       });
     });
   });

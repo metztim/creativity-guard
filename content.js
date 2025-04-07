@@ -42,6 +42,8 @@ const storage = {
     
     try {
       if (!this.isValidContext()) {
+        // Add specific logging for invalid context
+        console.warn('Storage context invalid, initiating retry...');
         retry();
         return;
       }
@@ -49,7 +51,8 @@ const storage = {
       chrome.storage.local.get([key], function(result) {
         try {
           if (chrome?.runtime?.lastError) {
-            console.error('Storage get error:', chrome.runtime.lastError);
+            // Log the specific lastError message
+            console.error('Storage get error:', chrome.runtime.lastError.message || chrome.runtime.lastError);
             retry();
             return;
           }
@@ -60,7 +63,7 @@ const storage = {
         }
       });
     } catch (e) {
-      console.error('Storage get error:', e);
+      console.error('Error calling storage get:', e); // Renamed log for clarity
       retry();
     }
   },
@@ -896,11 +899,49 @@ function showReflectionModal() {
 const socialMediaModule = {
   // Storage for social media stats and settings
   storage: {
-    get: function(callback) {
-      storage.get('socialMediaSettings', callback);
+    get: function(key, callback) {
+      if (typeof key === 'function') {
+        // Old usage: get(callback) - get both storage locations and merge them
+        callback = key;
+        
+        // First try the background.js managed storage (creativityGuardSocialMedia)
+        chrome.runtime.sendMessage({ type: 'GET_SOCIAL_MEDIA_SETTINGS' }, (bgSettings) => {
+          // Then get the direct storage (socialMediaUsage)
+          chrome.storage.local.get(['socialMediaUsage'], (result) => {
+            const directSettings = result.socialMediaUsage || {};
+            
+            // Combine both settings sources, with background.js settings taking precedence
+            const combinedSettings = { ...directSettings, ...bgSettings };
+            
+            console.log('%c[Creativity Guard] Loading combined settings:', 'color: #0a66c2;', {
+              directSettings,
+              bgSettings,
+              combinedSettings
+            });
+            
+            callback(combinedSettings);
+          });
+        });
+      } else {
+        // New usage: get(key, callback) - check specific key
+        chrome.storage.local.get([key], (result) => {
+          callback(result[key]);
+        });
+      }
     },
     set: function(value, callback) {
-      storage.set('socialMediaSettings', value, callback);
+      // Save to both storage locations for consistency
+      
+      // 1. Save to direct storage
+      chrome.storage.local.set({ socialMediaUsage: value }, () => {
+        // 2. Save to background.js managed storage
+        chrome.runtime.sendMessage({ 
+          type: 'SET_SOCIAL_MEDIA_SETTINGS', 
+          settings: value 
+        }, () => {
+          if (callback) callback(true);
+        });
+      });
     }
   },
   
@@ -912,6 +953,8 @@ const socialMediaModule = {
     enabledForLinkedin: true,
     enabledForTwitter: true,
     enabledForFacebook: true,
+    totalWeekendBlock: true, // Complete block on weekends by default
+    vacationModeEnabled: false, // New setting for vacation mode
     redirectUrl: 'https://read.readwise.io',
     visits: {} // Will store dates of visits
   },
@@ -937,11 +980,18 @@ const socialMediaModule = {
         // If no settings exist yet, initialize with defaults
         if (!settings) {
           console.log('%c[Creativity Guard] No settings found, using defaults', 'color: #0a66c2;', this.defaultSettings);
-          settings = this.defaultSettings;
+          settings = { ...this.defaultSettings }; // Use spread to ensure all defaults are copied
           // Save default settings
           this.storage.set(settings);
+        } else {
+           // Ensure all default keys exist in loaded settings, including new ones like vacationModeEnabled
+          settings = { ...this.defaultSettings, ...settings };
+           // Ensure visits object exists if settings were loaded but incomplete
+           if (!settings.visits) {
+             settings.visits = {};
+           }
         }
-        
+
         this.settings = settings;
         
         // Make sure the visits object exists
@@ -974,10 +1024,22 @@ const socialMediaModule = {
   // Load settings from storage
   loadSettings: function() {
     this.storage.get((settings) => {
+      console.log('%c[Creativity Guard] Loaded settings:', 'color: #0a66c2;', settings);
+      
+      // Ensure we have valid settings
       this.settings = settings || this.defaultSettings;
+      
+      // Make sure all default values are applied if missing
+      this.settings = { ...this.defaultSettings, ...this.settings };
+      
       // Make sure the visits object exists
       if (!this.settings.visits) {
         this.settings.visits = {};
+      }
+      
+      // Debug if vacationMode is active
+      if (this.settings.vacationModeEnabled) {
+        console.log('%c[Creativity Guard] Vacation Mode is ACTIVE in loaded settings', 'color: #ff9800; font-weight: bold;');
       }
     });
   },
@@ -1031,6 +1093,14 @@ const socialMediaModule = {
     try {
       console.log(`%c[Creativity Guard] Handling ${platform} visit`, 'color: #0a66c2;');
       
+      // --- Vacation Mode Check ---
+      if (this.settings.vacationModeEnabled) {
+        console.log('%c[Creativity Guard] Vacation Mode is active, showing restriction modal', 'color: #ff9800;');
+        this.showSocialMediaModal(platform, true); // Pass true for isVacationMode
+        return; // Skip further checks if vacation mode is on
+      }
+      // --- End Vacation Mode Check ---
+
       // Check if the feature is enabled for this platform
       const isEnabled = platform === 'linkedin' ? this.settings.enabledForLinkedin : 
                        platform === 'twitter' ? this.settings.enabledForTwitter : 
@@ -1054,9 +1124,13 @@ const socialMediaModule = {
       const hasVisited = this.hasVisitedToday(platform);
       console.log(`%c[Creativity Guard] Time allowed: ${isAllowedTime}, Has visited today: ${hasVisited}`, 'color: #0a66c2;');
       
-      if (isWeekendDay || !isAllowedTime || hasVisited) {
-        console.log('%c[Creativity Guard] Showing restriction modal', 'color: #0a66c2;');
-        this.showSocialMediaModal(platform);
+      // Determine if restriction modal should be shown based on weekend/time/visit
+      const isTotalWeekendBlock = isWeekendDay && (this.settings.totalWeekendBlock !== undefined ? this.settings.totalWeekendBlock : true);
+      const shouldShowModal = isTotalWeekendBlock || !isAllowedTime || hasVisited;
+
+      if (shouldShowModal) {
+        console.log('%c[Creativity Guard] Showing restriction modal (Weekend/Time/Visit)', 'color: #0a66c2;');
+        this.showSocialMediaModal(platform, false); // Pass false for isVacationMode
       } else {
         console.log('%c[Creativity Guard] Recording first visit', 'color: #0a66c2;');
         this.recordVisit(platform);
@@ -1070,7 +1144,7 @@ const socialMediaModule = {
   },
   
   // Show social media restriction modal
-  showSocialMediaModal: function(platform) {
+  showSocialMediaModal: function(platform, isVacationMode = false) { // Added isVacationMode parameter
     try {
       // Add styles to the document if they don't exist
       if (!document.getElementById('social-media-modal-styles')) {
@@ -1153,27 +1227,51 @@ const socialMediaModule = {
                          platform === 'twitter' ? this.settings.twitterAllowedHour : 
                          this.settings.facebookAllowedHour;
       
-      if (this.isWeekend()) {
-        messageText = `It's the weekend! Consider spending time away from ${platformName}.`;
-      } else if (!this.isAllowedTime(platform)) {
-        messageText = `${platformName} is only available after ${allowedHour}:00. Consider focusing on deep work during the morning.`;
-      } else if (this.hasVisitedToday(platform)) {
-        messageText = `You've already visited ${platformName} today. Consider limiting your social media usage.`;
+      // --- Determine Message Text ---
+      if (isVacationMode) {
+        messageText = `Vacation Mode is active. ${platformName} access is currently restricted to help you disconnect. You can turn off Vacation Mode in the extension settings.`;
+      } else {
+        // Original logic for weekend/time/visit checks
+        const isWeekendDay = this.isWeekend();
+        const isTotalWeekendBlock = isWeekendDay && (this.settings.totalWeekendBlock !== undefined ? this.settings.totalWeekendBlock : true);
+
+        if (isTotalWeekendBlock) { // Renamed isWeekendDay to isTotalWeekendBlock for clarity here
+          messageText = `It's the weekend! ${platformName} access is currently blocked to help you disconnect. You can change this in extension settings.`;
+        } else if (!this.isAllowedTime(platform)) {
+          messageText = `${platformName} is only available after ${allowedHour}:00. Consider focusing on deep work during the morning.`;
+        } else if (this.hasVisitedToday(platform)) {
+          messageText = `You've already visited ${platformName} today. Consider limiting your social media usage.`;
+        } else {
+           // Fallback message if somehow modal is shown without a specific reason (shouldn't happen often)
+           messageText = `Please consider if now is the best time to visit ${platformName}.`;
+        }
       }
-      
+      // --- End Determine Message Text ---
+
       const message = document.createElement('p');
       message.textContent = messageText;
       
       const buttons = document.createElement('div');
       buttons.className = 'buttons';
       
-      const proceedButton = document.createElement('button');
-      proceedButton.id = 'proceed';
-      proceedButton.textContent = 'Proceed Anyway';
-      proceedButton.onclick = () => {
-        this.sessionConsent[platform] = true;
-        modal.remove();
-      };
+      // --- Determine Buttons ---
+      // Conditions for showing the "Proceed Anyway" button:
+      // 1. Vacation Mode must be OFF.
+      // 2. It must NOT be a weekend where totalWeekendBlock is enabled.
+      const isWeekendDayForButton = this.isWeekend();
+      const isTotalWeekendBlockForButton = isWeekendDayForButton && (this.settings.totalWeekendBlock !== undefined ? this.settings.totalWeekendBlock : true);
+      const allowProceed = !isVacationMode && !isTotalWeekendBlockForButton;
+
+      if (allowProceed) {
+        const proceedButton = document.createElement('button');
+        proceedButton.id = 'proceed';
+        proceedButton.textContent = 'Proceed Anyway';
+        proceedButton.onclick = () => {
+          this.sessionConsent[platform] = true;
+          modal.remove();
+        };
+        buttons.appendChild(proceedButton);
+      }
       
       const skipButton = document.createElement('button');
       skipButton.id = 'skip';
@@ -1183,7 +1281,6 @@ const socialMediaModule = {
         window.location.href = this.settings.redirectUrl || 'https://read.readwise.io';
       };
       
-      buttons.appendChild(proceedButton);
       buttons.appendChild(skipButton);
       
       content.appendChild(title);
