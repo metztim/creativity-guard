@@ -242,7 +242,7 @@ function setupButtons() {
     
     // Get existing visit data
     chrome.storage.local.get(['socialMediaUsage'], function(result) {
-      if (result.socialMediaUsage && result.socialMediaUsage.visits) {
+      if (result && result.socialMediaUsage && result.socialMediaUsage.visits) {
         settings.visits = result.socialMediaUsage.visits;
       }
       

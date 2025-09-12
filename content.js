@@ -14,6 +14,35 @@ let stats = {
   thoughtFirstCount: 0
 };
 
+// Storage operation queue to prevent race conditions
+const storageQueue = {
+  queue: [],
+  processing: false,
+  
+  enqueue: function(operation) {
+    this.queue.push(operation);
+    if (!this.processing) {
+      this.processNext();
+    }
+  },
+  
+  processNext: function() {
+    if (this.queue.length === 0) {
+      this.processing = false;
+      return;
+    }
+    
+    this.processing = true;
+    const operation = this.queue.shift();
+    
+    // Execute the operation with a callback to process the next item
+    operation(() => {
+      // Small delay to prevent rapid-fire operations
+      setTimeout(() => this.processNext(), 10);
+    });
+  }
+};
+
 // Safe wrapper for chrome.storage operations with retry mechanism
 const storage = {
   isValidContext: function() {
@@ -30,8 +59,16 @@ const storage = {
     const maxRetries = 2;
     const retryDelay = 500;
     
+    // Prevent infinite recursion by strictly enforcing retry limit
+    if (retryCount >= maxRetries) {
+      console.warn('Max retries reached for storage get operation');
+      if (callback) callback(null);
+      return;
+    }
+    
     const retry = () => {
-      if (retryCount < maxRetries) {
+      // Double-check retry count before making recursive call
+      if (retryCount + 1 < maxRetries) {
         console.warn(`Retrying storage get operation (${retryCount + 1}/${maxRetries})`);
         setTimeout(() => this.get(key, callback, retryCount + 1), retryDelay);
       } else {
@@ -51,8 +88,9 @@ const storage = {
       chrome.storage.local.get([key], function(result) {
         try {
           if (chrome?.runtime?.lastError) {
-            // Log the specific lastError message
-            console.error('Storage get error:', chrome.runtime.lastError.message || chrome.runtime.lastError);
+            // Log the specific lastError message - safely access .message property
+            const errorMsg = chrome.runtime.lastError?.message || 'Unknown storage error';
+            console.error('Storage get error:', errorMsg);
             retry();
             return;
           }
@@ -72,8 +110,16 @@ const storage = {
     const maxRetries = 2;
     const retryDelay = 500;
     
+    // Prevent infinite recursion by strictly enforcing retry limit
+    if (retryCount >= maxRetries) {
+      console.warn('Max retries reached for storage set operation');
+      if (callback) callback(false);
+      return;
+    }
+    
     const retry = () => {
-      if (retryCount < maxRetries) {
+      // Double-check retry count before making recursive call
+      if (retryCount + 1 < maxRetries) {
         console.warn(`Retrying storage set operation (${retryCount + 1}/${maxRetries})`);
         setTimeout(() => this.set(key, value, callback, retryCount + 1), retryDelay);
       } else {
@@ -94,7 +140,9 @@ const storage = {
       chrome.storage.local.set(data, function() {
         try {
           if (chrome?.runtime?.lastError) {
-            console.error('Storage set error:', chrome.runtime.lastError);
+            // Safely access lastError properties
+            const errorMsg = chrome.runtime.lastError?.message || 'Unknown storage error';
+            console.error('Storage set error:', errorMsg);
             retry();
             return;
           }
@@ -110,6 +158,66 @@ const storage = {
     }
   }
 };
+
+// URL validation utility function
+function validateAndSanitizeUrl(url) {
+  if (!url || typeof url !== 'string') {
+    console.warn('Invalid URL provided:', url);
+    return 'https://read.readwise.io'; // Safe default
+  }
+  
+  try {
+    const trimmedUrl = url.trim();
+    
+    // Check for obviously malicious patterns
+    if (trimmedUrl.includes('javascript:') || 
+        trimmedUrl.includes('data:') || 
+        trimmedUrl.includes('vbscript:') ||
+        trimmedUrl.includes('file:')) {
+      console.warn('Potentially malicious URL blocked:', trimmedUrl);
+      return 'https://read.readwise.io';
+    }
+    
+    // Add protocol if missing
+    let normalizedUrl = trimmedUrl;
+    if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
+      normalizedUrl = 'https://' + normalizedUrl;
+    }
+    
+    // Validate URL format
+    const urlObj = new URL(normalizedUrl);
+    
+    // Only allow HTTP and HTTPS protocols
+    if (urlObj.protocol !== 'http:' && urlObj.protocol !== 'https:') {
+      console.warn('Non-HTTP(S) protocol blocked:', urlObj.protocol);
+      return 'https://read.readwise.io';
+    }
+    
+    // Optional: Whitelist of allowed domains (can be extended)
+    const allowedDomains = [
+      'read.readwise.io',
+      'readwise.io',
+      'google.com',
+      'wikipedia.org',
+      'github.com',
+      'stackoverflow.com',
+      'medium.com',
+      'news.ycombinator.com'
+    ];
+    
+    // For now, we'll allow any HTTPS domain but log potentially suspicious ones
+    const hostname = urlObj.hostname.toLowerCase();
+    if (!allowedDomains.some(domain => hostname === domain || hostname.endsWith('.' + domain))) {
+      console.info('Redirecting to non-whitelisted domain:', hostname);
+      // Still allow it, but log it for monitoring
+    }
+    
+    return normalizedUrl;
+  } catch (e) {
+    console.error('URL validation failed:', e.message, 'for URL:', url);
+    return 'https://read.readwise.io'; // Safe fallback
+  }
+}
 
 // Load saved stats with retry mechanism
 function loadStats() {
@@ -569,9 +677,10 @@ function showReflectionModal() {
     if (!setupSuccess) {
       // Fallback to default insertion
       console.log('Using fallback insertion method');
-      if (inputElement.parentElement) {
+      if (inputElement && inputElement.parentElement) {
         inputElement.parentElement.insertBefore(host, inputElement);
       } else {
+        // Safe fallback if inputElement or parentElement is null
         document.body.appendChild(host);
       }
     }
@@ -623,35 +732,50 @@ function showReflectionModal() {
         try {
           // For ChatGPT, use the conversation ID from URL
           if (currentSite === 'chat.openai.com' || currentSite === 'chatgpt.com') {
-            // Handle chat ID format: /c/{id}
-            const chatMatch = window.location.pathname.match(/\/c\/([\w-]+)/);
-            if (chatMatch) {
-              return chatMatch[1];
+            try {
+              // Handle chat ID format: /c/{id}
+              const chatMatch = window.location.pathname.match(/\/c\/([\w-]+)/);
+              if (chatMatch) {
+                return chatMatch[1];
+              }
+              
+              // Handle model parameter format: /?model={model}
+              const modelMatch = new URLSearchParams(window.location.search).get('model');
+              if (modelMatch) {
+                return `model-${modelMatch}`;
+              }
+              
+              // Fallback to pathname
+              return window.location.pathname || 'home';
+            } catch (e) {
+              console.error('Error parsing ChatGPT URL:', e);
+              return 'url-parse-error';
             }
-            
-            // Handle model parameter format: /?model={model}
-            const modelMatch = new URLSearchParams(window.location.search).get('model');
-            if (modelMatch) {
-              return `model-${modelMatch}`;
-            }
-            
-            // Fallback to pathname
-            return window.location.pathname || 'home';
           }
           
           // For Claude, handle /new path and conversation IDs
           if (currentSite === 'claude.ai') {
-            if (window.location.pathname === '/new' || window.location.pathname === '/') {
-              return 'new-conversation';
-            }
-            const claudeMatch = window.location.pathname.match(/\/chat\/([\w-]+)/);
-            if (claudeMatch) {
-              return claudeMatch[1];
+            try {
+              if (window.location.pathname === '/new' || window.location.pathname === '/') {
+                return 'new-conversation';
+              }
+              const claudeMatch = window.location.pathname.match(/\/chat\/([\w-]+)/);
+              if (claudeMatch) {
+                return claudeMatch[1];
+              }
+            } catch (e) {
+              console.error('Error parsing Claude URL:', e);
+              return 'url-parse-error';
             }
           }
           
           // For other platforms, use the full pathname as the ID
-          return window.location.pathname;
+          try {
+            return window.location.pathname || 'unknown-path';
+          } catch (e) {
+            console.error('Error accessing pathname:', e);
+            return 'pathname-access-error';
+          }
         } catch (e) {
           console.error('Error getting chat ID:', e);
           return window.location.pathname;
@@ -661,8 +785,8 @@ function showReflectionModal() {
       // Function to check if this is a new conversation by examining URL and page elements
       function isNewConversation() {
         try {
-          const currentPath = window.location.pathname;
-          const currentUrl = window.location.href;
+          const currentPath = window.location.pathname || '/';
+          const currentUrl = window.location.href || window.location.toString();
           
           // Skip non-chat pages (settings, projects, etc.)
           if (currentPath.includes('/settings') || 
@@ -733,6 +857,7 @@ function showReflectionModal() {
           return false;
         } catch (e) {
           console.error('Error checking for new conversation:', e);
+          // Return false as safe default when URL parsing fails
           return false;
         }
       }
@@ -748,22 +873,26 @@ function showReflectionModal() {
         });
       }
       
-      // Save shown chat to storage
+      // Save shown chat to storage with race condition protection
       function saveShownChat(chatId) {
-        loadShownChats((shownChats) => {
-          // Add the current chat with a timestamp
-          shownChats[chatId] = Date.now();
-          
-          // Remove chats older than 24 hours
-          const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
-          Object.keys(shownChats).forEach(id => {
-            if (shownChats[id] < oneDayAgo) {
-              delete shownChats[id];
-            }
+        storageQueue.enqueue((done) => {
+          loadShownChats((shownChats) => {
+            // Add the current chat with a timestamp
+            shownChats[chatId] = Date.now();
+            
+            // Remove chats older than 24 hours
+            const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+            Object.keys(shownChats).forEach(id => {
+              if (shownChats[id] < oneDayAgo) {
+                delete shownChats[id];
+              }
+            });
+            
+            // Save back to storage
+            storage.set('shownReminderChats', shownChats, () => {
+              done(); // Signal completion to queue processor
+            });
           });
-          
-          // Save back to storage
-          storage.set('shownReminderChats', shownChats);
         });
       }
       
@@ -1071,17 +1200,33 @@ const socialMediaModule = {
     return this.settings.visits[platform] && this.settings.visits[platform] === todayStr;
   },
   
-  // Record a visit
+  // Record a visit with race condition protection
   recordVisit: function(platform) {
     const todayStr = this.getTodayString();
     console.log(`Recording visit for ${platform} on ${todayStr}`);
-    this.settings.visits[platform] = todayStr;
-    // Wait for the storage operation to complete
-    this.storage.set(this.settings, (success) => {
-      console.log(`Visit recording ${success ? 'succeeded' : 'failed'}`);
-      if (!success) {
-        console.error('Failed to record visit for:', platform);
-      }
+    
+    // Use storage queue to prevent concurrent modifications
+    storageQueue.enqueue((done) => {
+      // Get current settings to ensure we have latest data
+      this.storage.get((currentSettings) => {
+        const settings = currentSettings || this.settings || {};
+        if (!settings.visits) {
+          settings.visits = {};
+        }
+        settings.visits[platform] = todayStr;
+        
+        // Save the updated settings
+        this.storage.set(settings, (success) => {
+          console.log(`Visit recording ${success ? 'succeeded' : 'failed'}`);
+          if (!success) {
+            console.error('Failed to record visit for:', platform);
+          } else {
+            // Update local settings on success
+            this.settings = settings;
+          }
+          done(); // Signal completion to queue processor
+        });
+      });
     });
   },
   
@@ -1288,7 +1433,8 @@ const socialMediaModule = {
       skipButton.textContent = 'Go to Reading';
       skipButton.onclick = () => {
         modal.remove();
-        window.location.href = this.settings.redirectUrl || 'https://read.readwise.io';
+        const validatedUrl = validateAndSanitizeUrl(this.settings.redirectUrl || 'https://read.readwise.io');
+        window.location.href = validatedUrl;
       };
       
       buttons.appendChild(skipButton);
