@@ -950,6 +950,7 @@ const socialMediaModule = {
     linkedinAllowedHour: 15, // 3 PM
     twitterAllowedHour: 15, // 3 PM
     facebookAllowedHour: 15, // 3 PM
+    allowedEndHour: 19, // 7 PM - end of allowed time window
     enabledForLinkedin: true,
     enabledForTwitter: true,
     enabledForFacebook: true,
@@ -1054,11 +1055,14 @@ const socialMediaModule = {
   isAllowedTime: function(platform) {
     const now = new Date();
     const hour = now.getHours();
-    const allowedHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour : 
-                       platform === 'twitter' ? this.settings.twitterAllowedHour : 
-                       this.settings.facebookAllowedHour;
+    const allowedStartHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour : 
+                            platform === 'twitter' ? this.settings.twitterAllowedHour : 
+                            this.settings.facebookAllowedHour;
     
-    return hour >= allowedHour;
+    // Use configurable end hour from settings
+    const allowedEndHour = this.settings.allowedEndHour || 19; // Default to 7 PM if not set
+    
+    return hour >= allowedStartHour && hour < allowedEndHour;
   },
   
   // Check if already visited today
@@ -1235,10 +1239,14 @@ const socialMediaModule = {
         const isWeekendDay = this.isWeekend();
         const isTotalWeekendBlock = isWeekendDay && (this.settings.totalWeekendBlock !== undefined ? this.settings.totalWeekendBlock : true);
 
-        if (isTotalWeekendBlock) { // Renamed isWeekendDay to isTotalWeekendBlock for clarity here
+        if (isTotalWeekendBlock) {
           messageText = `It's the weekend! ${platformName} access is currently blocked to help you disconnect. You can change this in extension settings.`;
         } else if (!this.isAllowedTime(platform)) {
-          messageText = `${platformName} is only available after ${allowedHour}:00. Consider focusing on deep work during the morning.`;
+          const allowedStartHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour : 
+                                  platform === 'twitter' ? this.settings.twitterAllowedHour : 
+                                  this.settings.facebookAllowedHour;
+          const allowedEndHour = this.settings.allowedEndHour || 19;
+          messageText = `${platformName} is only available between ${allowedStartHour}:00 and ${allowedEndHour}:00. Consider focusing on deep work during other hours.`;
         } else if (this.hasVisitedToday(platform)) {
           messageText = `You've already visited ${platformName} today. Consider limiting your social media usage.`;
         } else {
@@ -1258,9 +1266,11 @@ const socialMediaModule = {
       // Conditions for showing the "Proceed Anyway" button:
       // 1. Vacation Mode must be OFF.
       // 2. It must NOT be a weekend where totalWeekendBlock is enabled.
+      // 3. It must NOT be a weekday outside the allowed time window (hard block).
       const isWeekendDayForButton = this.isWeekend();
       const isTotalWeekendBlockForButton = isWeekendDayForButton && (this.settings.totalWeekendBlock !== undefined ? this.settings.totalWeekendBlock : true);
-      const allowProceed = !isVacationMode && !isTotalWeekendBlockForButton;
+      const isWeekdayHardBlock = !isWeekendDayForButton && !this.isAllowedTime(platform);
+      const allowProceed = !isVacationMode && !isTotalWeekendBlockForButton && !isWeekdayHardBlock;
 
       if (allowProceed) {
         const proceedButton = document.createElement('button');

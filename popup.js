@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', function() {
       linkedinAllowedHour: 15,
       twitterAllowedHour: 15,
       facebookAllowedHour: 15,
+      allowedEndHour: 19,
       enabledForLinkedin: true,
       enabledForTwitter: true,
       enabledForFacebook: true,
@@ -40,6 +41,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('linkedinTime').value = formatTime(settings.linkedinAllowedHour);
     document.getElementById('twitterTime').value = formatTime(settings.twitterAllowedHour);
     document.getElementById('facebookTime').value = formatTime(settings.facebookAllowedHour);
+    document.getElementById('allowedEndTime').value = formatTime(settings.allowedEndHour);
     document.getElementById('enableLinkedin').checked = settings.enabledForLinkedin;
     document.getElementById('enableTwitter').checked = settings.enabledForTwitter;
     document.getElementById('enableFacebook').checked = settings.enabledForFacebook;
@@ -52,11 +54,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const linkedinTime = document.getElementById('linkedinTime').value;
     const twitterTime = document.getElementById('twitterTime').value;
     const facebookTime = document.getElementById('facebookTime').value;
+    const endTime = document.getElementById('allowedEndTime').value;
     
     const settings = {
       linkedinAllowedHour: parseInt(linkedinTime.split(':')[0]),
       twitterAllowedHour: parseInt(twitterTime.split(':')[0]),
       facebookAllowedHour: parseInt(facebookTime.split(':')[0]),
+      allowedEndHour: parseInt(endTime.split(':')[0]),
       enabledForLinkedin: document.getElementById('enableLinkedin').checked,
       enabledForTwitter: document.getElementById('enableTwitter').checked,
       enabledForFacebook: document.getElementById('enableFacebook').checked,
@@ -71,6 +75,7 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('linkedinTime').addEventListener('change', saveSettings);
   document.getElementById('twitterTime').addEventListener('change', saveSettings);
   document.getElementById('facebookTime').addEventListener('change', saveSettings);
+  document.getElementById('allowedEndTime').addEventListener('change', saveSettings);
   document.getElementById('enableLinkedin').addEventListener('change', saveSettings);
   document.getElementById('enableTwitter').addEventListener('change', saveSettings);
   document.getElementById('enableFacebook').addEventListener('change', saveSettings);
@@ -126,6 +131,7 @@ function loadSocialMediaSettings() {
       linkedinAllowedHour: 15,
       twitterAllowedHour: 15,
       facebookAllowedHour: 15,
+      allowedEndHour: 19, // 7 PM - end of allowed time window
       enabledForLinkedin: true,
       enabledForTwitter: true,
       enabledForFacebook: true,
@@ -143,6 +149,7 @@ function loadSocialMediaSettings() {
     document.getElementById('twitterTime').value = formatTime(settings.twitterAllowedHour);
     document.getElementById('enableFacebook').checked = settings.enabledForFacebook;
     document.getElementById('facebookTime').value = formatTime(settings.facebookAllowedHour);
+    document.getElementById('allowedEndTime').value = formatTime(settings.allowedEndHour);
     document.getElementById('totalWeekendBlock').checked = settings.totalWeekendBlock;
     document.getElementById('vacationMode').checked = settings.vacationModeEnabled; // Load vacation mode state
     document.getElementById('redirectUrl').value = settings.redirectUrl;
@@ -158,6 +165,7 @@ function saveSocialMediaSettings() {
     twitterAllowedHour: parseTime(document.getElementById('twitterTime').value),
     enabledForFacebook: document.getElementById('enableFacebook').checked,
     facebookAllowedHour: parseTime(document.getElementById('facebookTime').value),
+    allowedEndHour: parseTime(document.getElementById('allowedEndTime').value),
     totalWeekendBlock: document.getElementById('totalWeekendBlock').checked,
     vacationModeEnabled: document.getElementById('vacationMode').checked, // Save vacation mode state
     redirectUrl: document.getElementById('redirectUrl').value || 'https://read.readwise.io' // Add default if empty
@@ -181,7 +189,7 @@ function saveSocialMediaSettings() {
 
 // Add event listeners for social media settings changes
 ['enableLinkedin', 'linkedinTime', 'enableTwitter', 'twitterTime', 
- 'enableFacebook', 'facebookTime', 'totalWeekendBlock', 'vacationMode', 'redirectUrl']
+ 'enableFacebook', 'facebookTime', 'allowedEndTime', 'totalWeekendBlock', 'vacationMode', 'redirectUrl']
  .forEach(id => {
    const element = document.getElementById(id);
    if (element) {
@@ -222,6 +230,7 @@ function setupButtons() {
       linkedinAllowedHour: parseInt(document.getElementById('linkedinTime').value.split(':')[0]),
       twitterAllowedHour: parseInt(document.getElementById('twitterTime').value.split(':')[0]),
       facebookAllowedHour: parseInt(document.getElementById('facebookTime').value.split(':')[0]),
+      allowedEndHour: parseInt(document.getElementById('allowedEndTime').value.split(':')[0]),
       enabledForLinkedin: document.getElementById('enableLinkedin').checked,
       enabledForTwitter: document.getElementById('enableTwitter').checked,
       enabledForFacebook: document.getElementById('enableFacebook').checked,
