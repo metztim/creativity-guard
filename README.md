@@ -33,11 +33,12 @@ While AI tools are incredibly useful, they can sometimes reduce our ability to t
 
 ## Supported AI Tools
 
-- ChatGPT (chat.openai.com)
+- ChatGPT (chat.openai.com, chatgpt.com)
 - Claude (claude.ai)
 - Google Gemini (gemini.google.com)
-- Google Bard (bard.google.com)
 - Poe (poe.com)
+- TypingMind (typingmind.com)
+- Lex (lex.page)
 
 ## License
 

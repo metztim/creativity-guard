@@ -12,7 +12,6 @@ Creativity Guard is a Chrome extension (Manifest V3) that encourages users to th
 - **content.js**: Main content script injected into AI and social media sites. Handles modal display, input detection, and blocking logic. Uses a safe storage wrapper to handle Chrome API edge cases.
 - **background.js**: Service worker for message passing between content scripts and extension storage
 - **popup.js/popup.html**: Extension popup UI with two tabs - AI usage stats and social media time restrictions
-- **styles.css**: Modal and UI styling injected into target pages
 
 ### Storage Structure
 The extension uses Chrome's local storage with these key structures:

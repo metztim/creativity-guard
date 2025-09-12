@@ -18,7 +18,6 @@
     {
       "matches": [
         "https://chat.openai.com/*",
-        "https://bard.google.com/*",
         "https://claude.ai/*",
         "https://poe.com/*",
         "https://gemini.google.com/*",
@@ -31,8 +30,7 @@
         "https://twitter.com/*",
         "https://x.com/*"
       ],
-      "js": ["content.js"],
-      "css": ["styles.css"]
+      "js": ["content.js"]
     }
   ],
   "action": {

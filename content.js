@@ -1,3 +1,135 @@
+// Resource tracking and cleanup system
+const CreativityGuardCleanup = {
+  observers: new Set(),
+  timeouts: new Set(),
+  intervals: new Set(),
+  eventListeners: new Map(), // Map of element -> [{type, handler}, ...]
+  cleanupCallbacks: new Set(),
+
+  // Track a MutationObserver
+  trackObserver: function(observer) {
+    this.observers.add(observer);
+    return observer;
+  },
+
+  // Track a timeout
+  trackTimeout: function(timeoutId) {
+    this.timeouts.add(timeoutId);
+    return timeoutId;
+  },
+
+  // Track an interval
+  trackInterval: function(intervalId) {
+    this.intervals.add(intervalId);
+    return intervalId;
+  },
+
+  // Track an event listener
+  trackEventListener: function(element, eventType, handler) {
+    if (!this.eventListeners.has(element)) {
+      this.eventListeners.set(element, []);
+    }
+    this.eventListeners.get(element).push({ type: eventType, handler });
+  },
+
+  // Add a cleanup callback
+  addCleanupCallback: function(callback) {
+    this.cleanupCallbacks.add(callback);
+  },
+
+  // Clean up all resources
+  cleanup: function() {
+    console.log('CreativityGuard: Starting comprehensive cleanup...', {
+      observers: this.observers.size,
+      timeouts: this.timeouts.size,
+      intervals: this.intervals.size,
+      eventListeners: this.eventListeners.size,
+      cleanupCallbacks: this.cleanupCallbacks.size
+    });
+
+    // Disconnect all MutationObservers
+    this.observers.forEach(observer => {
+      try {
+        observer.disconnect();
+      } catch (e) {
+        console.warn('Error disconnecting observer:', e);
+      }
+    });
+    this.observers.clear();
+
+    // Clear all timeouts
+    this.timeouts.forEach(timeoutId => {
+      try {
+        clearTimeout(timeoutId);
+      } catch (e) {
+        console.warn('Error clearing timeout:', e);
+      }
+    });
+    this.timeouts.clear();
+
+    // Clear all intervals
+    this.intervals.forEach(intervalId => {
+      try {
+        clearInterval(intervalId);
+      } catch (e) {
+        console.warn('Error clearing interval:', e);
+      }
+    });
+    this.intervals.clear();
+
+    // Remove all event listeners
+    this.eventListeners.forEach((listeners, element) => {
+      listeners.forEach(({ type, handler }) => {
+        try {
+          element.removeEventListener(type, handler);
+        } catch (e) {
+          console.warn('Error removing event listener:', e);
+        }
+      });
+    });
+    this.eventListeners.clear();
+
+    // Run custom cleanup callbacks
+    this.cleanupCallbacks.forEach(callback => {
+      try {
+        callback();
+      } catch (e) {
+        console.warn('Error in cleanup callback:', e);
+      }
+    });
+    this.cleanupCallbacks.clear();
+
+    // Remove any extension-created DOM elements
+    try {
+      const extensionElements = [
+        '#creativity-guard-reminder',
+        '#creativity-guard-styles', 
+        '#social-media-modal',
+        '#social-media-modal-styles'
+      ];
+      
+      extensionElements.forEach(selector => {
+        const element = document.querySelector(selector);
+        if (element) {
+          element.remove();
+        }
+      });
+    } catch (e) {
+      console.warn('Error removing extension DOM elements:', e);
+    }
+
+    console.log('CreativityGuard: Cleanup completed');
+  }
+};
+
+// Set up global cleanup handlers
+window.addEventListener('beforeunload', () => CreativityGuardCleanup.cleanup());
+window.addEventListener('unload', () => CreativityGuardCleanup.cleanup());
+window.addEventListener('pagehide', () => CreativityGuardCleanup.cleanup());
+
+// Make cleanup accessible globally for debugging
+window.CreativityGuardCleanup = CreativityGuardCleanup;
+
 // Suggestions for pre-work before using AI
 const suggestions = [
   "Sketch a rough outline on a piece of paper.",
@@ -14,147 +146,41 @@ let stats = {
   thoughtFirstCount: 0
 };
 
-// Storage operation queue to prevent race conditions
-const storageQueue = {
-  queue: [],
-  processing: false,
-  
-  enqueue: function(operation) {
-    this.queue.push(operation);
-    if (!this.processing) {
-      this.processNext();
-    }
-  },
-  
-  processNext: function() {
-    if (this.queue.length === 0) {
-      this.processing = false;
-      return;
-    }
-    
-    this.processing = true;
-    const operation = this.queue.shift();
-    
-    // Execute the operation with a callback to process the next item
-    operation(() => {
-      // Small delay to prevent rapid-fire operations
-      setTimeout(() => this.processNext(), 10);
-    });
-  }
-};
 
-// Safe wrapper for chrome.storage operations with retry mechanism
+// Simple wrapper for chrome.storage operations
 const storage = {
-  isValidContext: function() {
+  get: function(key, callback) {
     try {
-      return typeof chrome !== 'undefined' && 
-             chrome?.runtime?.id !== undefined && 
-             chrome?.storage?.local !== undefined;
-    } catch (e) {
-      return false;
-    }
-  },
-  
-  get: function(key, callback, retryCount = 0) {
-    const maxRetries = 2;
-    const retryDelay = 500;
-    
-    // Prevent infinite recursion by strictly enforcing retry limit
-    if (retryCount >= maxRetries) {
-      console.warn('Max retries reached for storage get operation');
-      if (callback) callback(null);
-      return;
-    }
-    
-    const retry = () => {
-      // Double-check retry count before making recursive call
-      if (retryCount + 1 < maxRetries) {
-        console.warn(`Retrying storage get operation (${retryCount + 1}/${maxRetries})`);
-        setTimeout(() => this.get(key, callback, retryCount + 1), retryDelay);
-      } else {
-        console.warn('Max retries reached for storage get operation');
-        if (callback) callback(null);
-      }
-    };
-    
-    try {
-      if (!this.isValidContext()) {
-        // Add specific logging for invalid context
-        console.warn('Storage context invalid, initiating retry...');
-        retry();
-        return;
-      }
-      
       chrome.storage.local.get([key], function(result) {
-        try {
-          if (chrome?.runtime?.lastError) {
-            // Log the specific lastError message - safely access .message property
-            const errorMsg = chrome.runtime.lastError?.message || 'Unknown storage error';
-            console.error('Storage get error:', errorMsg);
-            retry();
-            return;
-          }
-          if (callback) callback(result[key]);
-        } catch (e) {
-          console.error('Error in storage get callback:', e);
-          retry();
+        if (chrome.runtime.lastError) {
+          console.error('Storage get error:', chrome.runtime.lastError);
+          if (callback) callback(null);
+          return;
         }
+        if (callback) callback(result[key]);
       });
     } catch (e) {
-      console.error('Error calling storage get:', e); // Renamed log for clarity
-      retry();
+      console.error('Error calling storage get:', e);
+      if (callback) callback(null);
     }
   },
   
-  set: function(key, value, callback, retryCount = 0) {
-    const maxRetries = 2;
-    const retryDelay = 500;
-    
-    // Prevent infinite recursion by strictly enforcing retry limit
-    if (retryCount >= maxRetries) {
-      console.warn('Max retries reached for storage set operation');
-      if (callback) callback(false);
-      return;
-    }
-    
-    const retry = () => {
-      // Double-check retry count before making recursive call
-      if (retryCount + 1 < maxRetries) {
-        console.warn(`Retrying storage set operation (${retryCount + 1}/${maxRetries})`);
-        setTimeout(() => this.set(key, value, callback, retryCount + 1), retryDelay);
-      } else {
-        console.warn('Max retries reached for storage set operation');
-        if (callback) callback(false);
-      }
-    };
-    
+  set: function(key, value, callback) {
     try {
-      if (!this.isValidContext()) {
-        retry();
-        return;
-      }
-      
       const data = {};
       data[key] = value;
       
       chrome.storage.local.set(data, function() {
-        try {
-          if (chrome?.runtime?.lastError) {
-            // Safely access lastError properties
-            const errorMsg = chrome.runtime.lastError?.message || 'Unknown storage error';
-            console.error('Storage set error:', errorMsg);
-            retry();
-            return;
-          }
-          if (callback) callback(true);
-        } catch (e) {
-          console.error('Error in storage set callback:', e);
-          retry();
+        if (chrome.runtime.lastError) {
+          console.error('Storage set error:', chrome.runtime.lastError);
+          if (callback) callback(false);
+          return;
         }
+        if (callback) callback(true);
       });
     } catch (e) {
       console.error('Storage set error:', e);
-      retry();
+      if (callback) callback(false);
     }
   }
 };
@@ -243,6 +269,7 @@ function getRandomSuggestion() {
 
 // Site-specific handlers for AI platforms
 const siteHandlers = {
+  // Combined handler for both ChatGPT domains
   'chat.openai.com': {
     setupReminder: function(inputElement, host) {
       console.log('ChatGPT: Setting up reminder with Claude-like approach');
@@ -277,62 +304,12 @@ const siteHandlers = {
     },
     
     getInputElement: function() {
-      // This is much simpler - we're not actually using this for triggering
-      // but we need to return something for compatibility
       return document.querySelector('textarea') || document.querySelector('form');
     },
     
     monitorInput: function(callback) {
-      // Skip all the complex event handling - just call the callback immediately
-      // to show the reminder as soon as the page loads
       console.log('ChatGPT: Triggering reminder immediately');
-      setTimeout(callback, 1000);
-    }
-  },
-  'chatgpt.com': {
-    setupReminder: function(inputElement, host) {
-      console.log('ChatGPT: Setting up reminder with Claude-like approach');
-      
-      // Style the host element to look good in ChatGPT
-      host.style.margin = '15px auto';
-      host.style.maxWidth = '800px';
-      host.style.borderRadius = '8px';
-      host.style.padding = '10px 15px';
-      host.style.boxShadow = '0 0 10px rgba(0,0,0,0.1)';
-      host.style.backgroundColor = 'rgba(247, 247, 248, 0.9)';
-      host.style.zIndex = '1000';
-      
-      // Place it at the top of the main content area
-      const targets = [
-        document.querySelector('main'),
-        document.querySelector('#__next'),
-        document.querySelector('body')
-      ];
-      
-      for (const target of targets) {
-        if (target) {
-          console.log('ChatGPT: Inserting reminder into', target.tagName);
-          target.insertBefore(host, target.firstChild);
-          return true;
-        }
-      }
-      
-      // Absolute last resort
-      document.body.insertBefore(host, document.body.firstChild);
-      return true;
-    },
-    
-    getInputElement: function() {
-      // This is much simpler - we're not actually using this for triggering
-      // but we need to return something for compatibility
-      return document.querySelector('textarea') || document.querySelector('form');
-    },
-    
-    monitorInput: function(callback) {
-      // Skip all the complex event handling - just call the callback immediately
-      // to show the reminder as soon as the page loads
-      console.log('ChatGPT: Triggering reminder immediately');
-      setTimeout(callback, 1000);
+      CreativityGuardCleanup.trackTimeout(setTimeout(callback, 1000));
     }
   },
   'claude.ai': {
@@ -416,6 +393,9 @@ const siteHandlers = {
         }
       });
       
+      // Track the observer for cleanup
+      CreativityGuardCleanup.trackObserver(urlObserver);
+      
       urlObserver.observe(document.body, { 
         childList: true, 
         subtree: true,
@@ -423,7 +403,7 @@ const siteHandlers = {
       });
       
       // Call the callback to show the reminder immediately for new chat
-      setTimeout(callback, 500);
+      CreativityGuardCleanup.trackTimeout(setTimeout(callback, 500));
     },
     
     setupListeners: function(element, callback) {
@@ -437,6 +417,8 @@ const siteHandlers = {
       // Add event listeners for various interactions
       ['focus', 'click', 'input', 'keydown'].forEach(eventType => {
         element.addEventListener(eventType, callback);
+        // Track the event listener for cleanup
+        CreativityGuardCleanup.trackEventListener(element, eventType, callback);
       });
     }
   },
@@ -484,10 +466,13 @@ const siteHandlers = {
       // Skip all the complex event handling - just call the callback immediately
       // to show the reminder as soon as the page loads
       console.log('TypingMind: Triggering reminder immediately');
-      setTimeout(callback, 1000);
+      CreativityGuardCleanup.trackTimeout(setTimeout(callback, 1000));
     }
   }
 };
+
+// Set chatgpt.com to use the same handler as chat.openai.com
+siteHandlers['chatgpt.com'] = siteHandlers['chat.openai.com'];
 
 // Create and show the reminder
 function showReflectionModal() {
@@ -525,73 +510,209 @@ function showReflectionModal() {
         #creativity-guard-reminder {
           position: relative;
           width: 100%;
-          margin-bottom: 10px;
+          margin-bottom: 16px;
           z-index: 1000;
+          opacity: 0;
+          transform: translateY(-10px);
+          animation: fadeInSlideDown 0.5s ease-out forwards;
         }
+        
+        @keyframes fadeInSlideDown {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        
+        @keyframes fadeOutSlideUp {
+          from {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+          to {
+            opacity: 0;
+            transform: translateY(-10px) scale(0.95);
+          }
+        }
+        
         #creativity-guard-reminder .reminder {
-          background: #f8f9fa;
-          border: 1px solid #e2e8f0;
-          border-radius: 8px;
-          padding: 15px;
+          background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+          border: 2px solid #e2e8f0;
+          border-radius: 16px;
+          padding: 24px;
           width: 100%;
-          font-family: system-ui, -apple-system, sans-serif;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           font-size: 14px;
-          box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1), 0 4px 10px rgba(0, 0, 0, 0.05);
+          position: relative;
+          overflow: hidden;
         }
+        
+        #creativity-guard-reminder .reminder::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 4px;
+          background: linear-gradient(90deg, #3b82f6, #10b981, #f59e0b);
+        }
+        
         #creativity-guard-reminder .reminder-header {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          margin-bottom: 10px;
+          margin-bottom: 16px;
         }
+        
         #creativity-guard-reminder .reminder-title {
-          font-weight: bold;
-          color: #333;
+          font-weight: 700;
+          font-size: 18px;
+          color: #1f2937;
           margin: 0;
-        }
-        #creativity-guard-reminder .close-button {
-          background: none;
-          border: none;
-          cursor: pointer;
-          color: #888;
-          font-size: 16px;
-          padding: 4px;
-          margin: -4px;
-        }
-        #creativity-guard-reminder .reminder-content {
-          margin-bottom: 12px;
-        }
-        #creativity-guard-reminder .suggestion {
-          font-style: italic;
-          color: #666;
-          margin: 8px 0;
-          font-size: 13px;
-        }
-        #creativity-guard-reminder .buttons {
           display: flex;
+          align-items: center;
           gap: 8px;
         }
-        #creativity-guard-reminder button {
-          padding: 6px 12px;
+        
+        #creativity-guard-reminder .reminder-title::before {
+          content: '🤔';
+          font-size: 20px;
+        }
+        
+        #creativity-guard-reminder .close-button {
+          background: rgba(107, 114, 128, 0.1);
           border: none;
-          border-radius: 4px;
           cursor: pointer;
-          font-size: 13px;
-          transition: background 0.2s;
+          color: #6b7280;
+          font-size: 18px;
+          width: 32px;
+          height: 32px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s ease;
         }
+        
+        #creativity-guard-reminder .close-button:hover {
+          background: rgba(239, 68, 68, 0.1);
+          color: #ef4444;
+          transform: scale(1.1);
+        }
+        
+        #creativity-guard-reminder .close-button:focus {
+          outline: 2px solid #3b82f6;
+          outline-offset: 2px;
+        }
+        
+        #creativity-guard-reminder .reminder-content {
+          margin-bottom: 20px;
+        }
+        
+        #creativity-guard-reminder .reminder-content p {
+          margin: 0 0 12px 0;
+          color: #374151;
+          line-height: 1.5;
+          font-size: 15px;
+        }
+        
+        #creativity-guard-reminder .suggestion {
+          background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
+          padding: 16px;
+          border-radius: 12px;
+          border-left: 4px solid #10b981;
+          font-style: italic;
+          color: #4b5563;
+          margin: 16px 0;
+          font-size: 14px;
+          position: relative;
+        }
+        
+        #creativity-guard-reminder .suggestion::before {
+          content: '💡';
+          position: absolute;
+          top: 12px;
+          right: 16px;
+          font-size: 18px;
+        }
+        
+        #creativity-guard-reminder .buttons {
+          display: flex;
+          gap: 12px;
+          justify-content: flex-end;
+        }
+        
+        #creativity-guard-reminder button {
+          padding: 12px 20px;
+          border: none;
+          border-radius: 10px;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 600;
+          transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          min-width: 120px;
+          justify-content: center;
+        }
+        
+        #creativity-guard-reminder button:focus {
+          outline: 3px solid rgba(59, 130, 246, 0.5);
+          outline-offset: 2px;
+        }
+        
         #creativity-guard-reminder #proceed {
-          background: #0a66c2;
+          background: linear-gradient(135deg, #10b981, #059669);
           color: white;
+          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
         }
+        
         #creativity-guard-reminder #proceed:hover {
-          background: #084e96;
+          background: linear-gradient(135deg, #059669, #047857);
+          transform: translateY(-2px);
+          box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
         }
+        
+        #creativity-guard-reminder #proceed::before {
+          content: '✓';
+        }
+        
         #creativity-guard-reminder #skip {
-          background: #e0e0e0;
-          color: #333;
+          background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
+          color: #374151;
+          border: 2px solid #d1d5db;
         }
+        
         #creativity-guard-reminder #skip:hover {
-          background: #d0d0d0;
+          background: linear-gradient(135deg, #e5e7eb, #d1d5db);
+          transform: translateY(-1px);
+          border-color: #9ca3af;
+        }
+        
+        #creativity-guard-reminder #skip::before {
+          content: '⏭️';
+        }
+        
+        /* Responsive design */
+        @media (max-width: 480px) {
+          #creativity-guard-reminder .reminder {
+            padding: 20px;
+            border-radius: 12px;
+          }
+          
+          #creativity-guard-reminder .buttons {
+            flex-direction: column;
+          }
+          
+          #creativity-guard-reminder button {
+            width: 100%;
+          }
         }
       `;
       document.head.appendChild(styleSheet);
@@ -615,11 +736,19 @@ function showReflectionModal() {
     const closeButton = document.createElement('button');
     closeButton.className = 'close-button';
     closeButton.textContent = '✕';
-    closeButton.onclick = () => {
-      stats.bypassCount++;
-      saveStats();
-      host.remove();
+    closeButton.setAttribute('aria-label', 'Close reminder');
+    closeButton.setAttribute('title', 'Close reminder (Esc)');
+    const closeHandler = () => {
+      // Animate out before removing
+      host.style.animation = 'fadeOutSlideUp 0.3s ease-in forwards';
+      setTimeout(() => {
+        stats.bypassCount++;
+        saveStats();
+        host.remove();
+      }, 300);
     };
+    closeButton.addEventListener('click', closeHandler);
+    CreativityGuardCleanup.trackEventListener(closeButton, 'click', closeHandler);
     
     header.appendChild(title);
     header.appendChild(closeButton);
@@ -646,20 +775,82 @@ function showReflectionModal() {
     const proceedButton = document.createElement('button');
     proceedButton.id = 'proceed';
     proceedButton.textContent = 'I did my own thinking';
-    proceedButton.onclick = () => {
-      stats.thoughtFirstCount++;
-      saveStats();
-      host.remove();
+    proceedButton.setAttribute('aria-label', 'Confirm you thought first before using AI');
+    proceedButton.setAttribute('title', 'I took time to think first (Enter)');
+    const proceedHandler = () => {
+      // Animate out before removing
+      host.style.animation = 'fadeOutSlideUp 0.3s ease-in forwards';
+      setTimeout(() => {
+        stats.thoughtFirstCount++;
+        saveStats();
+        host.remove();
+      }, 300);
     };
+    proceedButton.addEventListener('click', proceedHandler);
+    CreativityGuardCleanup.trackEventListener(proceedButton, 'click', proceedHandler);
     
     const skipButton = document.createElement('button');
     skipButton.id = 'skip';
     skipButton.textContent = 'Skip';
-    skipButton.onclick = () => {
-      stats.bypassCount++;
-      saveStats();
-      host.remove();
+    skipButton.setAttribute('aria-label', 'Skip thinking and proceed to AI');
+    skipButton.setAttribute('title', 'Skip this reminder');
+    const skipHandler = () => {
+      // Animate out before removing
+      host.style.animation = 'fadeOutSlideUp 0.3s ease-in forwards';
+      setTimeout(() => {
+        stats.bypassCount++;
+        saveStats();
+        host.remove();
+      }, 300);
     };
+    skipButton.addEventListener('click', skipHandler);
+    CreativityGuardCleanup.trackEventListener(skipButton, 'click', skipHandler);
+    
+    // Add keyboard navigation to the modal
+    const keyboardHandler = (e) => {
+      switch(e.key) {
+        case 'Escape':
+          e.preventDefault();
+          closeHandler();
+          break;
+        case 'Enter':
+          if (document.activeElement === skipButton) {
+            e.preventDefault();
+            skipHandler();
+          } else {
+            e.preventDefault();
+            proceedHandler();
+          }
+          break;
+        case 'Tab':
+          // Allow natural tab navigation, but focus management
+          const focusableElements = [closeButton, proceedButton, skipButton];
+          const currentIndex = focusableElements.indexOf(document.activeElement);
+          
+          if (e.shiftKey && currentIndex === 0) {
+            e.preventDefault();
+            focusableElements[focusableElements.length - 1].focus();
+          } else if (!e.shiftKey && currentIndex === focusableElements.length - 1) {
+            e.preventDefault();
+            focusableElements[0].focus();
+          }
+          break;
+      }
+    };
+    
+    // Add keyboard handler to modal
+    host.addEventListener('keydown', keyboardHandler);
+    CreativityGuardCleanup.trackEventListener(host, 'keydown', keyboardHandler);
+    
+    // Set modal attributes for accessibility
+    host.setAttribute('role', 'dialog');
+    host.setAttribute('aria-modal', 'true');
+    host.setAttribute('aria-labelledby', 'reminder-title');
+    host.setAttribute('aria-describedby', 'reminder-content');
+    host.setAttribute('tabindex', '-1');
+    
+    title.id = 'reminder-title';
+    content.id = 'reminder-content';
     
     buttonsContainer.appendChild(proceedButton);
     buttonsContainer.appendChild(skipButton);
@@ -684,6 +875,20 @@ function showReflectionModal() {
         document.body.appendChild(host);
       }
     }
+    
+    // Focus management for accessibility
+    setTimeout(() => {
+      proceedButton.focus();
+      
+      // Announce to screen readers
+      const announcement = document.createElement('div');
+      announcement.setAttribute('aria-live', 'assertive');
+      announcement.style.position = 'absolute';
+      announcement.style.left = '-10000px';
+      announcement.textContent = 'Creativity reminder appeared. Please consider thinking first before using AI.';
+      document.body.appendChild(announcement);
+      setTimeout(() => announcement.remove(), 2000);
+    }, 100);
     
     // Increment AI usage attempt counter
     stats.aiUsageCount++;
@@ -873,26 +1078,22 @@ function showReflectionModal() {
         });
       }
       
-      // Save shown chat to storage with race condition protection
+      // Save shown chat to storage
       function saveShownChat(chatId) {
-        storageQueue.enqueue((done) => {
-          loadShownChats((shownChats) => {
-            // Add the current chat with a timestamp
-            shownChats[chatId] = Date.now();
-            
-            // Remove chats older than 24 hours
-            const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
-            Object.keys(shownChats).forEach(id => {
-              if (shownChats[id] < oneDayAgo) {
-                delete shownChats[id];
-              }
-            });
-            
-            // Save back to storage
-            storage.set('shownReminderChats', shownChats, () => {
-              done(); // Signal completion to queue processor
-            });
+        loadShownChats((shownChats) => {
+          // Add the current chat with a timestamp
+          shownChats[chatId] = Date.now();
+          
+          // Remove chats older than 24 hours
+          const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+          Object.keys(shownChats).forEach(id => {
+            if (shownChats[id] < oneDayAgo) {
+              delete shownChats[id];
+            }
           });
+          
+          // Save back to storage
+          storage.set('shownReminderChats', shownChats);
         });
       }
       
@@ -954,21 +1155,23 @@ function showReflectionModal() {
           lastUrl = currentUrl;
           
           // Only check if it's a new conversation, don't trigger on every URL change
-          setTimeout(() => {
+          CreativityGuardCleanup.trackTimeout(setTimeout(() => {
             if (isNewConversation()) {
               console.log('URL change detected to a new conversation page');
               handleAIInteraction({ type: 'url-change' });
             } else {
               console.log('URL change detected but not a new conversation');
             }
-          }, 500);
+          }, 500));
         }
       });
       
+      // Track the observer for cleanup
+      CreativityGuardCleanup.trackObserver(urlObserver);
       urlObserver.observe(document.body, { subtree: true, childList: true });
       
       // Check once after initialization with a more specific delay
-      setTimeout(() => {
+      CreativityGuardCleanup.trackTimeout(setTimeout(() => {
         // Only show if it's actually a new conversation
         if (isNewConversation()) {
           console.log('Initial check: Found new conversation');
@@ -986,15 +1189,15 @@ function showReflectionModal() {
           console.log('Setting up retries for new conversation page');
           const retryTimes = [2000, 4000];
           retryTimes.forEach(delay => {
-            setTimeout(() => {
+            CreativityGuardCleanup.trackTimeout(setTimeout(() => {
               if (!shownInChatsForSession.has(getCurrentChatId()) && isNewConversation()) {
                 console.log(`Retry ${delay}ms: Checking for new conversation`);
                 handleAIInteraction({ type: 'retry' });
               }
-            }, delay);
+            }, delay));
           });
         }
-      }, 1500);
+      }, 1500));
       
       console.log(`Creativity Guard fully initialized for ${currentSite}`);
     };
@@ -1007,14 +1210,15 @@ function showReflectionModal() {
       // Otherwise wait for load event
       console.log('Waiting for window load event');
       window.addEventListener('load', startInit);
+      CreativityGuardCleanup.trackEventListener(window, 'load', startInit);
       
       // Also try again after a short delay if the load event doesn't fire
-      setTimeout(() => {
+      CreativityGuardCleanup.trackTimeout(setTimeout(() => {
         if (document.readyState === 'complete' && !window.aiSiteHandlersInitialized) {
           console.log('Initializing after delay');
           startInit();
         }
-      }, 2000);
+      }, 2000));
     }
     
     // Flag to prevent double initialization
@@ -1200,32 +1404,27 @@ const socialMediaModule = {
     return this.settings.visits[platform] && this.settings.visits[platform] === todayStr;
   },
   
-  // Record a visit with race condition protection
+  // Record a visit
   recordVisit: function(platform) {
     const todayStr = this.getTodayString();
     console.log(`Recording visit for ${platform} on ${todayStr}`);
     
-    // Use storage queue to prevent concurrent modifications
-    storageQueue.enqueue((done) => {
-      // Get current settings to ensure we have latest data
-      this.storage.get((currentSettings) => {
-        const settings = currentSettings || this.settings || {};
-        if (!settings.visits) {
-          settings.visits = {};
+    // Get current settings and update them
+    this.storage.get((currentSettings) => {
+      const settings = currentSettings || this.settings || {};
+      if (!settings.visits) {
+        settings.visits = {};
+      }
+      settings.visits[platform] = todayStr;
+      
+      // Save the updated settings
+      this.storage.set(settings, (success) => {
+        console.log(`Visit recording ${success ? 'succeeded' : 'failed'}`);
+        if (success) {
+          this.settings = settings;
+        } else {
+          console.error('Failed to record visit for:', platform);
         }
-        settings.visits[platform] = todayStr;
-        
-        // Save the updated settings
-        this.storage.set(settings, (success) => {
-          console.log(`Visit recording ${success ? 'succeeded' : 'failed'}`);
-          if (!success) {
-            console.error('Failed to record visit for:', platform);
-          } else {
-            // Update local settings on success
-            this.settings = settings;
-          }
-          done(); // Signal completion to queue processor
-        });
       });
     });
   },
@@ -1295,7 +1494,7 @@ const socialMediaModule = {
   // Show social media restriction modal
   showSocialMediaModal: function(platform, isVacationMode = false) { // Added isVacationMode parameter
     try {
-      // Add styles to the document if they don't exist
+      // Add enhanced styles to the document if they don't exist
       if (!document.getElementById('social-media-modal-styles')) {
         const styleSheet = document.createElement('style');
         styleSheet.id = 'social-media-modal-styles';
@@ -1306,56 +1505,186 @@ const socialMediaModule = {
             left: 0;
             right: 0;
             bottom: 0;
-            background: white;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
             z-index: 2147483647;
             display: flex;
             align-items: center;
             justify-content: center;
+            opacity: 0;
+            animation: modalFadeIn 0.4s ease-out forwards;
           }
+          
+          @keyframes modalFadeIn {
+            from {
+              opacity: 0;
+            }
+            to {
+              opacity: 1;
+            }
+          }
+          
+          @keyframes modalFadeOut {
+            from {
+              opacity: 1;
+            }
+            to {
+              opacity: 0;
+            }
+          }
+          
+          @keyframes modalSlideIn {
+            from {
+              transform: translateY(20px) scale(0.95);
+              opacity: 0;
+            }
+            to {
+              transform: translateY(0) scale(1);
+              opacity: 1;
+            }
+          }
+          
+          @keyframes modalSlideOut {
+            from {
+              transform: translateY(0) scale(1);
+              opacity: 1;
+            }
+            to {
+              transform: translateY(-20px) scale(0.95);
+              opacity: 0;
+            }
+          }
+          
           #social-media-modal .content {
-            max-width: 500px;
+            background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+            max-width: 520px;
             width: 90%;
+            padding: 32px;
+            border-radius: 20px;
             text-align: center;
-            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15), 0 8px 20px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+            overflow: hidden;
+            animation: modalSlideIn 0.4s ease-out;
           }
+          
+          #social-media-modal .content::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981);
+          }
+          
           #social-media-modal h2 {
-            font-size: 24px;
-            color: #1a1a1a;
-            margin-bottom: 20px;
+            font-size: 28px;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
           }
+          
+          #social-media-modal h2::before {
+            content: '🛡️';
+            font-size: 32px;
+          }
+          
           #social-media-modal p {
             font-size: 16px;
-            line-height: 1.5;
-            color: #4a4a4a;
-            margin-bottom: 30px;
+            line-height: 1.6;
+            color: #4b5563;
+            margin-bottom: 32px;
+            max-width: 420px;
+            margin-left: auto;
+            margin-right: auto;
           }
+          
           #social-media-modal .buttons {
             display: flex;
-            gap: 12px;
+            gap: 16px;
             justify-content: center;
+            flex-wrap: wrap;
           }
+          
           #social-media-modal button {
-            padding: 12px 24px;
+            padding: 14px 28px;
             border: none;
-            border-radius: 6px;
+            border-radius: 12px;
             font-size: 16px;
-            font-weight: 500;
+            font-weight: 600;
             cursor: pointer;
-            transition: background-color 0.2s;
+            transition: all 0.2s ease;
+            min-width: 160px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
           }
+          
+          #social-media-modal button:focus {
+            outline: 3px solid rgba(59, 130, 246, 0.5);
+            outline-offset: 3px;
+          }
+          
           #social-media-modal #proceed {
-            background: #0a66c2;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
             color: white;
+            box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
           }
+          
           #social-media-modal #proceed:hover {
-            background: #084e96;
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
           }
+          
+          #social-media-modal #proceed::before {
+            content: '➤';
+          }
+          
           #social-media-modal #skip {
-            background: #e0e0e0;
-            color: #333;
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
           }
+          
           #social-media-modal #skip:hover {
-            background: #d0d0d0;
+            background: linear-gradient(135deg, #059669, #047857);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+          }
+          
+          #social-media-modal #skip::before {
+            content: '📚';
+          }
+          
+          /* Responsive design */
+          @media (max-width: 480px) {
+            #social-media-modal .content {
+              padding: 24px;
+              border-radius: 16px;
+              width: 95%;
+            }
+            
+            #social-media-modal h2 {
+              font-size: 24px;
+            }
+            
+            #social-media-modal .buttons {
+              flex-direction: column;
+            }
+            
+            #social-media-modal button {
+              width: 100%;
+            }
           }
         `;
         document.head.appendChild(styleSheet);
@@ -1417,25 +1746,100 @@ const socialMediaModule = {
       const isWeekdayHardBlock = !isWeekendDayForButton && !this.isAllowedTime(platform);
       const allowProceed = !isVacationMode && !isTotalWeekendBlockForButton && !isWeekdayHardBlock;
 
+      let proceedButton = null;
       if (allowProceed) {
-        const proceedButton = document.createElement('button');
+        proceedButton = document.createElement('button');
         proceedButton.id = 'proceed';
         proceedButton.textContent = 'Proceed Anyway';
-        proceedButton.onclick = () => {
-          this.sessionConsent[platform] = true;
-          modal.remove();
+        proceedButton.setAttribute('aria-label', 'Proceed to social media anyway');
+        proceedButton.setAttribute('title', 'Continue to social media (Enter)');
+        const proceedModalHandler = () => {
+          // Animate out before proceeding
+          modal.style.animation = 'modalFadeOut 0.3s ease-in forwards';
+          setTimeout(() => {
+            this.sessionConsent[platform] = true;
+            modal.remove();
+          }, 300);
         };
+        proceedButton.addEventListener('click', proceedModalHandler);
+        CreativityGuardCleanup.trackEventListener(proceedButton, 'click', proceedModalHandler);
         buttons.appendChild(proceedButton);
       }
       
       const skipButton = document.createElement('button');
       skipButton.id = 'skip';
       skipButton.textContent = 'Go to Reading';
-      skipButton.onclick = () => {
-        modal.remove();
-        const validatedUrl = validateAndSanitizeUrl(this.settings.redirectUrl || 'https://read.readwise.io');
-        window.location.href = validatedUrl;
+      skipButton.setAttribute('aria-label', 'Go to reading material instead');
+      skipButton.setAttribute('title', 'Redirect to reading material (Escape)');
+      const skipModalHandler = () => {
+        try {
+          // Animate out before redirecting
+          modal.style.animation = 'modalFadeOut 0.3s ease-in forwards';
+          setTimeout(() => {
+            modal.remove();
+            const validatedUrl = validateAndSanitizeUrl(this.settings.redirectUrl || 'https://read.readwise.io');
+            
+            // Additional safety check before redirecting
+            if (validatedUrl && typeof validatedUrl === 'string' && validatedUrl.startsWith('http')) {
+              window.location.href = validatedUrl;
+            } else {
+              console.error('Invalid redirect URL after validation:', validatedUrl);
+              window.location.href = 'https://read.readwise.io'; // Fallback
+            }
+          }, 300);
+        } catch (error) {
+          console.error('Error during redirect:', error);
+          window.location.href = 'https://read.readwise.io'; // Safe fallback
+        }
       };
+      skipButton.addEventListener('click', skipModalHandler);
+      CreativityGuardCleanup.trackEventListener(skipButton, 'click', skipModalHandler);
+      
+      // Add keyboard navigation to the social media modal
+      const keyboardHandler = (e) => {
+        switch(e.key) {
+          case 'Escape':
+            e.preventDefault();
+            skipModalHandler();
+            break;
+          case 'Enter':
+            if (document.activeElement === proceedButton) {
+              e.preventDefault();
+              proceedButton.click();
+            } else {
+              e.preventDefault();
+              skipModalHandler();
+            }
+            break;
+          case 'Tab':
+            // Focus management for modal
+            const focusableElements = proceedButton ? [proceedButton, skipButton] : [skipButton];
+            const currentIndex = focusableElements.indexOf(document.activeElement);
+            
+            if (e.shiftKey && currentIndex === 0) {
+              e.preventDefault();
+              focusableElements[focusableElements.length - 1].focus();
+            } else if (!e.shiftKey && currentIndex === focusableElements.length - 1) {
+              e.preventDefault();
+              focusableElements[0].focus();
+            }
+            break;
+        }
+      };
+      
+      // Add keyboard handler to modal
+      modal.addEventListener('keydown', keyboardHandler);
+      CreativityGuardCleanup.trackEventListener(modal, 'keydown', keyboardHandler);
+      
+      // Set modal attributes for accessibility
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      modal.setAttribute('aria-labelledby', 'social-modal-title');
+      modal.setAttribute('aria-describedby', 'social-modal-content');
+      modal.setAttribute('tabindex', '-1');
+      
+      title.id = 'social-modal-title';
+      message.id = 'social-modal-content';
       
       buttons.appendChild(skipButton);
       
@@ -1445,6 +1849,24 @@ const socialMediaModule = {
       modal.appendChild(content);
       
       document.body.appendChild(modal);
+      
+      // Focus management for accessibility
+      setTimeout(() => {
+        if (proceedButton) {
+          proceedButton.focus();
+        } else {
+          skipButton.focus();
+        }
+        
+        // Announce to screen readers
+        const announcement = document.createElement('div');
+        announcement.setAttribute('aria-live', 'assertive');
+        announcement.style.position = 'absolute';
+        announcement.style.left = '-10000px';
+        announcement.textContent = `Social media restriction modal appeared. ${messageText}`;
+        document.body.appendChild(announcement);
+        setTimeout(() => announcement.remove(), 3000);
+      }, 100);
     } catch (e) {
       console.error('Error showing social media modal:', e);
     }

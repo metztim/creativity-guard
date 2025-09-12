@@ -1,13 +1,283 @@
-// Helper functions for time conversion
-function formatTime(hour) {
-  return `${hour.toString().padStart(2, '0')}:00`;
-}
 
-function parseTime(timeString) {
-  if (!timeString) return 15; // Default to 3 PM if empty
-  const parts = timeString.split(':');
-  return parseInt(parts[0], 10);
-}
+// Error handling and notification system
+const ErrorSystem = {
+  showError: function(message, duration = 5000) {
+    this.showNotification(message, 'error', duration);
+  },
+  
+  showSuccess: function(message, duration = 3000) {
+    this.showNotification(message, 'success', duration);
+  },
+  
+  showWarning: function(message, duration = 4000) {
+    this.showNotification(message, 'warning', duration);
+  },
+  
+  showNotification: function(message, type = 'info', duration = 3000) {
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.textContent = message;
+    
+    // Add styles if not already added
+    if (!document.getElementById('error-system-styles')) {
+      const styles = document.createElement('style');
+      styles.id = 'error-system-styles';
+      styles.textContent = `
+        .notification {
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          padding: 12px 20px;
+          border-radius: 6px;
+          color: white;
+          font-size: 14px;
+          font-weight: 500;
+          z-index: 10000;
+          max-width: 300px;
+          word-wrap: break-word;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+          animation: slideIn 0.3s ease-out;
+        }
+        .notification-error {
+          background-color: #dc3545;
+        }
+        .notification-success {
+          background-color: #28a745;
+        }
+        .notification-warning {
+          background-color: #ffc107;
+          color: #212529;
+        }
+        .notification-info {
+          background-color: #17a2b8;
+        }
+        @keyframes slideIn {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+        @keyframes slideOut {
+          from {
+            transform: translateX(0);
+            opacity: 1;
+          }
+          to {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+        }
+      `;
+      document.head.appendChild(styles);
+    }
+    
+    document.body.appendChild(notification);
+    
+    // Remove notification after duration
+    setTimeout(() => {
+      notification.style.animation = 'slideOut 0.3s ease-in';
+      setTimeout(() => {
+        if (notification.parentNode) {
+          notification.parentNode.removeChild(notification);
+        }
+      }, 300);
+    }, duration);
+  }
+};
+
+// Input validation utilities
+const ValidationUtils = {
+  validateTimeInput: function(timeString, fieldName) {
+    if (!timeString) {
+      throw new Error(`${fieldName} is required`);
+    }
+    
+    const timeParts = timeString.split(':');
+    if (timeParts.length !== 2) {
+      throw new Error(`${fieldName} must be in HH:MM format`);
+    }
+    
+    const hour = parseInt(timeParts[0], 10);
+    const minute = parseInt(timeParts[1], 10);
+    
+    if (isNaN(hour) || hour < 0 || hour > 23) {
+      throw new Error(`${fieldName} hour must be between 0 and 23`);
+    }
+    
+    if (isNaN(minute) || minute < 0 || minute > 59) {
+      throw new Error(`${fieldName} minute must be between 0 and 59`);
+    }
+    
+    return { hour, minute, isValid: true };
+  },
+  
+  validateUrl: function(url, fieldName) {
+    if (!url || typeof url !== 'string') {
+      throw new Error(`${fieldName} is required`);
+    }
+    
+    const trimmedUrl = url.trim();
+    if (!trimmedUrl) {
+      throw new Error(`${fieldName} cannot be empty`);
+    }
+    
+    // Check for malicious patterns
+    const dangerousPatterns = [
+      'javascript:',
+      'data:',
+      'vbscript:',
+      'file:',
+      'ftp:'
+    ];
+    
+    const lowerUrl = trimmedUrl.toLowerCase();
+    for (const pattern of dangerousPatterns) {
+      if (lowerUrl.includes(pattern)) {
+        throw new Error(`${fieldName} contains invalid protocol: ${pattern}`);
+      }
+    }
+    
+    // Add protocol if missing
+    let normalizedUrl = trimmedUrl;
+    if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
+      normalizedUrl = 'https://' + normalizedUrl;
+    }
+    
+    // Validate URL format
+    try {
+      const urlObj = new URL(normalizedUrl);
+      
+      // Only allow HTTP and HTTPS
+      if (urlObj.protocol !== 'http:' && urlObj.protocol !== 'https:') {
+        throw new Error(`${fieldName} must use HTTP or HTTPS protocol`);
+      }
+      
+      return normalizedUrl;
+    } catch (e) {
+      throw new Error(`${fieldName} is not a valid URL: ${e.message}`);
+    }
+  },
+  
+  sanitizeInput: function(input) {
+    if (typeof input !== 'string') {
+      return input;
+    }
+    
+    return input.trim();
+  }
+};
+
+// Safe Chrome API wrapper
+const SafeChromeAPI = {
+  storage: {
+    get: function(keys, callback) {
+      if (!chrome?.storage?.local) {
+        ErrorSystem.showError('Chrome storage API is not available');
+        callback(null);
+        return;
+      }
+      
+      try {
+        chrome.storage.local.get(keys, function(result) {
+          if (chrome.runtime.lastError) {
+            console.error('Storage get error:', chrome.runtime.lastError);
+            ErrorSystem.showError(`Failed to load settings: ${chrome.runtime.lastError.message}`);
+            callback(null);
+            return;
+          }
+          callback(result);
+        });
+      } catch (e) {
+        console.error('Error calling storage get:', e);
+        ErrorSystem.showError('Failed to access extension storage');
+        callback(null);
+      }
+    },
+    
+    set: function(data, callback) {
+      if (!chrome?.storage?.local) {
+        ErrorSystem.showError('Chrome storage API is not available');
+        if (callback) callback(false);
+        return;
+      }
+      
+      try {
+        chrome.storage.local.set(data, function() {
+          if (chrome.runtime.lastError) {
+            console.error('Storage set error:', chrome.runtime.lastError);
+            ErrorSystem.showError(`Failed to save settings: ${chrome.runtime.lastError.message}`);
+            if (callback) callback(false);
+            return;
+          }
+          if (callback) callback(true);
+        });
+      } catch (e) {
+        console.error('Storage set error:', e);
+        ErrorSystem.showError('Failed to save to extension storage');
+        if (callback) callback(false);
+      }
+    }
+  },
+  
+  runtime: {
+    sendMessage: function(message, callback) {
+      if (!chrome?.runtime?.sendMessage) {
+        ErrorSystem.showError('Chrome runtime API is not available');
+        if (callback) callback(null);
+        return;
+      }
+      
+      try {
+        chrome.runtime.sendMessage(message, function(response) {
+          if (chrome.runtime.lastError) {
+            console.error('Runtime message error:', chrome.runtime.lastError);
+            ErrorSystem.showError(`Communication error: ${chrome.runtime.lastError.message}`);
+            if (callback) callback(null);
+            return;
+          }
+          if (callback) callback(response);
+        });
+      } catch (e) {
+        console.error('Error sending runtime message:', e);
+        ErrorSystem.showError('Failed to communicate with extension');
+        if (callback) callback(null);
+      }
+    }
+  }
+};
+
+// Cleanup system for popup
+const PopupCleanup = {
+  eventListeners: new Map(),
+  
+  trackEventListener: function(element, eventType, handler) {
+    if (!this.eventListeners.has(element)) {
+      this.eventListeners.set(element, []);
+    }
+    this.eventListeners.get(element).push({ type: eventType, handler });
+  },
+  
+  cleanup: function() {
+    this.eventListeners.forEach((listeners, element) => {
+      listeners.forEach(({ type, handler }) => {
+        try {
+          element.removeEventListener(type, handler);
+        } catch (e) {
+          console.warn('Error removing popup event listener:', e);
+        }
+      });
+    });
+    this.eventListeners.clear();
+  }
+};
+
+// Clean up when popup is closed
+window.addEventListener('beforeunload', () => PopupCleanup.cleanup());
+window.addEventListener('unload', () => PopupCleanup.cleanup());
 
 // Load stats when popup opens
 document.addEventListener('DOMContentLoaded', function() {
@@ -23,65 +293,6 @@ document.addEventListener('DOMContentLoaded', function() {
   // Set up buttons
   setupButtons();
 
-  // Load settings when popup opens
-  chrome.storage.local.get(['socialMediaSettings'], function(result) {
-    const settings = result.socialMediaSettings || {
-      linkedinAllowedHour: 15,
-      twitterAllowedHour: 15,
-      facebookAllowedHour: 15,
-      allowedEndHour: 19,
-      enabledForLinkedin: true,
-      enabledForTwitter: true,
-      enabledForFacebook: true,
-      totalWeekendBlock: true,
-      redirectUrl: 'https://read.readwise.io'
-    };
-
-    // Set initial values
-    document.getElementById('linkedinTime').value = formatTime(settings.linkedinAllowedHour);
-    document.getElementById('twitterTime').value = formatTime(settings.twitterAllowedHour);
-    document.getElementById('facebookTime').value = formatTime(settings.facebookAllowedHour);
-    document.getElementById('allowedEndTime').value = formatTime(settings.allowedEndHour);
-    document.getElementById('enableLinkedin').checked = settings.enabledForLinkedin;
-    document.getElementById('enableTwitter').checked = settings.enabledForTwitter;
-    document.getElementById('enableFacebook').checked = settings.enabledForFacebook;
-    document.getElementById('totalWeekendBlock').checked = settings.totalWeekendBlock !== undefined ? settings.totalWeekendBlock : true;
-    document.getElementById('redirectUrl').value = settings.redirectUrl || 'https://read.readwise.io';
-  });
-
-  // Save settings when changed
-  const saveSettings = () => {
-    const linkedinTime = document.getElementById('linkedinTime').value;
-    const twitterTime = document.getElementById('twitterTime').value;
-    const facebookTime = document.getElementById('facebookTime').value;
-    const endTime = document.getElementById('allowedEndTime').value;
-    
-    const settings = {
-      linkedinAllowedHour: parseInt(linkedinTime.split(':')[0]),
-      twitterAllowedHour: parseInt(twitterTime.split(':')[0]),
-      facebookAllowedHour: parseInt(facebookTime.split(':')[0]),
-      allowedEndHour: parseInt(endTime.split(':')[0]),
-      enabledForLinkedin: document.getElementById('enableLinkedin').checked,
-      enabledForTwitter: document.getElementById('enableTwitter').checked,
-      enabledForFacebook: document.getElementById('enableFacebook').checked,
-      totalWeekendBlock: document.getElementById('totalWeekendBlock').checked,
-      redirectUrl: document.getElementById('redirectUrl').value || 'https://read.readwise.io'
-    };
-
-    chrome.storage.local.set({ socialMediaSettings: settings });
-  };
-
-  // Add event listeners
-  document.getElementById('linkedinTime').addEventListener('change', saveSettings);
-  document.getElementById('twitterTime').addEventListener('change', saveSettings);
-  document.getElementById('facebookTime').addEventListener('change', saveSettings);
-  document.getElementById('allowedEndTime').addEventListener('change', saveSettings);
-  document.getElementById('enableLinkedin').addEventListener('change', saveSettings);
-  document.getElementById('enableTwitter').addEventListener('change', saveSettings);
-  document.getElementById('enableFacebook').addEventListener('change', saveSettings);
-  document.getElementById('totalWeekendBlock').addEventListener('change', saveSettings);
-  document.getElementById('redirectUrl').addEventListener('change', saveSettings);
-  document.getElementById('redirectUrl').addEventListener('input', saveSettings);
 });
 
 // Handle tab switching
@@ -89,7 +300,7 @@ function setupTabs() {
   const tabButtons = document.querySelectorAll('.tab-button');
   
   tabButtons.forEach(button => {
-    button.addEventListener('click', function() {
+    const clickHandler = function() {
       // Remove active class from all tabs
       document.querySelectorAll('.tab-button').forEach(btn => {
         btn.classList.remove('active');
@@ -102,186 +313,519 @@ function setupTabs() {
       this.classList.add('active');
       const tabId = this.getAttribute('data-tab');
       document.getElementById(tabId).classList.add('active');
-    });
-  });
-}
-
-// Load AI usage stats
-function loadAIStats() {
-  // Get stats from storage
-  chrome.storage.local.get(['creativityGuardStats'], function(result) {
-    if (result.creativityGuardStats) {
-      updateStatsDisplay(result.creativityGuardStats);
-    }
-  });
-}
-
-// Load social media settings
-function loadSocialMediaSettings() {
-  chrome.runtime.sendMessage({ type: 'GET_SOCIAL_MEDIA_SETTINGS' }, (settings) => {
-    if (chrome.runtime.lastError) {
-      console.error('Error getting social media settings:', chrome.runtime.lastError);
-      return;
-    }
-    // Ensure settings is an object, even if null/undefined is returned
-    settings = settings || {}; 
-    
-    // Set default values if they don't exist
-    const defaults = {
-      linkedinAllowedHour: 15,
-      twitterAllowedHour: 15,
-      facebookAllowedHour: 15,
-      allowedEndHour: 19, // 7 PM - end of allowed time window
-      enabledForLinkedin: true,
-      enabledForTwitter: true,
-      enabledForFacebook: true,
-      totalWeekendBlock: true,
-      vacationModeEnabled: false, // Added default
-      redirectUrl: 'https://read.readwise.io',
     };
     
-    settings = { ...defaults, ...settings }; // Merge defaults with loaded settings
-    
-    // Update UI elements
-    document.getElementById('enableLinkedin').checked = settings.enabledForLinkedin;
-    document.getElementById('linkedinTime').value = formatTime(settings.linkedinAllowedHour);
-    document.getElementById('enableTwitter').checked = settings.enabledForTwitter;
-    document.getElementById('twitterTime').value = formatTime(settings.twitterAllowedHour);
-    document.getElementById('enableFacebook').checked = settings.enabledForFacebook;
-    document.getElementById('facebookTime').value = formatTime(settings.facebookAllowedHour);
-    document.getElementById('allowedEndTime').value = formatTime(settings.allowedEndHour);
-    document.getElementById('totalWeekendBlock').checked = settings.totalWeekendBlock;
-    document.getElementById('vacationMode').checked = settings.vacationModeEnabled; // Load vacation mode state
-    document.getElementById('redirectUrl').value = settings.redirectUrl;
+    button.addEventListener('click', clickHandler);
+    PopupCleanup.trackEventListener(button, 'click', clickHandler);
   });
 }
 
-// Function to save social media settings
-function saveSocialMediaSettings() {
-  const settings = {
-    enabledForLinkedin: document.getElementById('enableLinkedin').checked,
-    linkedinAllowedHour: parseTime(document.getElementById('linkedinTime').value),
-    enabledForTwitter: document.getElementById('enableTwitter').checked,
-    twitterAllowedHour: parseTime(document.getElementById('twitterTime').value),
-    enabledForFacebook: document.getElementById('enableFacebook').checked,
-    facebookAllowedHour: parseTime(document.getElementById('facebookTime').value),
-    allowedEndHour: parseTime(document.getElementById('allowedEndTime').value),
-    totalWeekendBlock: document.getElementById('totalWeekendBlock').checked,
-    vacationModeEnabled: document.getElementById('vacationMode').checked, // Save vacation mode state
-    redirectUrl: document.getElementById('redirectUrl').value || 'https://read.readwise.io' // Add default if empty
-  };
-
-  // Send message to background script to save settings
-  chrome.runtime.sendMessage({ type: 'SET_SOCIAL_MEDIA_SETTINGS', settings: settings }, (response) => {
-    if (chrome.runtime.lastError) {
-      console.error('Error saving social media settings:', chrome.runtime.lastError);
-    } else if (response && response.success) {
-      console.log('Social media settings saved successfully.');
-      // Optional: Show a confirmation message to the user
-      const saveButton = document.getElementById('save-social-settings');
-      saveButton.textContent = 'Saved!';
-      setTimeout(() => { saveButton.textContent = 'Save Settings'; }, 1500);
-    } else {
-      console.error('Failed to save social media settings.');
+// Load AI usage stats with error handling
+function loadAIStats() {
+  SafeChromeAPI.storage.get(['creativityGuardStats'], function(result) {
+    if (!result) {
+      console.warn('No stats result returned, using defaults');
+      updateStatsDisplay({ aiUsageCount: 0, bypassCount: 0, thoughtFirstCount: 0 });
+      return;
+    }
+    
+    try {
+      const stats = result.creativityGuardStats || { aiUsageCount: 0, bypassCount: 0, thoughtFirstCount: 0 };
+      
+      // Validate stats structure
+      const validatedStats = {
+        aiUsageCount: Math.max(0, parseInt(stats.aiUsageCount, 10) || 0),
+        bypassCount: Math.max(0, parseInt(stats.bypassCount, 10) || 0),
+        thoughtFirstCount: Math.max(0, parseInt(stats.thoughtFirstCount, 10) || 0)
+      };
+      
+      updateStatsDisplay(validatedStats);
+    } catch (error) {
+      console.error('Error processing stats:', error);
+      ErrorSystem.showError('Failed to load AI usage statistics');
+      updateStatsDisplay({ aiUsageCount: 0, bypassCount: 0, thoughtFirstCount: 0 });
     }
   });
 }
 
-// Add event listeners for social media settings changes
-['enableLinkedin', 'linkedinTime', 'enableTwitter', 'twitterTime', 
- 'enableFacebook', 'facebookTime', 'allowedEndTime', 'totalWeekendBlock', 'vacationMode', 'redirectUrl']
- .forEach(id => {
-   const element = document.getElementById(id);
-   if (element) {
-     element.addEventListener('change', saveSocialMediaSettings); // Save automatically on change
-   } else {
-     console.warn(`Element with ID ${id} not found for event listener.`);
-   }
- });
+// Load social media settings with enhanced error handling
+function loadSocialMediaSettings() {
+  SafeChromeAPI.runtime.sendMessage({ type: 'GET_SOCIAL_MEDIA_SETTINGS' }, (settings) => {
+    if (!settings) {
+      // Use defaults if no settings returned
+      settings = {};
+    }
+    
+    try {
+      // Set default values if they don't exist
+      const defaults = {
+        linkedinAllowedHour: 15,
+        twitterAllowedHour: 15,
+        facebookAllowedHour: 15,
+        allowedEndHour: 19, // 7 PM - end of allowed time window
+        enabledForLinkedin: true,
+        enabledForTwitter: true,
+        enabledForFacebook: true,
+        totalWeekendBlock: true,
+        vacationModeEnabled: false,
+        redirectUrl: 'https://read.readwise.io',
+      };
+      
+      settings = { ...defaults, ...settings }; // Merge defaults with loaded settings
+      
+      // Validate and sanitize settings before applying to UI
+      const sanitizedSettings = validateAndSanitizeSettings(settings);
+      
+      // Update UI elements with error handling
+      updateUIElementsSafely(sanitizedSettings);
+      
+      // Settings loaded successfully - no notification needed to avoid spam
+    } catch (error) {
+      console.error('Error processing settings:', error);
+      ErrorSystem.showError(`Failed to load settings: ${error.message}`);
+      
+      // Load defaults as fallback
+      const defaults = {
+        linkedinAllowedHour: 15,
+        twitterAllowedHour: 15,
+        facebookAllowedHour: 15,
+        allowedEndHour: 19,
+        enabledForLinkedin: true,
+        enabledForTwitter: true,
+        enabledForFacebook: true,
+        totalWeekendBlock: true,
+        vacationModeEnabled: false,
+        redirectUrl: 'https://read.readwise.io',
+      };
+      
+      try {
+        updateUIElementsSafely(defaults);
+        NotificationSystem.showWarning('⚠️ Loaded default settings due to error');
+      } catch (fallbackError) {
+        ErrorSystem.showError('Failed to load default settings');
+      }
+    }
+  });
+}
 
-// Remove the dedicated save button listener as we save on change now
-// const saveSocialButton = document.getElementById('save-social-settings');
-// if (saveSocialButton) {
-//   saveSocialButton.addEventListener('click', saveSocialMediaSettings);
-// } else {
-//   console.warn('Save social settings button not found.');
-// }
+// Validate and sanitize settings
+function validateAndSanitizeSettings(settings) {
+  const sanitized = { ...settings };
+  
+  // Validate hours
+  const hourFields = [
+    { key: 'linkedinAllowedHour', name: 'LinkedIn allowed hour', default: 15 },
+    { key: 'twitterAllowedHour', name: 'Twitter allowed hour', default: 15 },
+    { key: 'facebookAllowedHour', name: 'Facebook allowed hour', default: 15 },
+    { key: 'allowedEndHour', name: 'End hour', default: 19 }
+  ];
+  
+  hourFields.forEach(field => {
+    const value = parseInt(sanitized[field.key], 10);
+    if (isNaN(value) || value < 0 || value > 23) {
+      console.warn(`Invalid ${field.name}: ${sanitized[field.key]}, using default: ${field.default}`);
+      sanitized[field.key] = field.default;
+    } else {
+      sanitized[field.key] = value;
+    }
+  });
+  
+  // Validate boolean fields
+  const booleanFields = [
+    'enabledForLinkedin',
+    'enabledForTwitter', 
+    'enabledForFacebook',
+    'totalWeekendBlock',
+    'vacationModeEnabled'
+  ];
+  
+  booleanFields.forEach(field => {
+    if (typeof sanitized[field] !== 'boolean') {
+      sanitized[field] = !!sanitized[field]; // Convert to boolean
+    }
+  });
+  
+  // Validate and sanitize URL
+  try {
+    sanitized.redirectUrl = ValidationUtils.validateUrl(sanitized.redirectUrl || 'https://read.readwise.io', 'Redirect URL');
+  } catch (error) {
+    console.warn('Invalid redirect URL, using default:', error.message);
+    sanitized.redirectUrl = 'https://read.readwise.io';
+  }
+  
+  return sanitized;
+}
+
+// Safely update UI elements
+function updateUIElementsSafely(settings) {
+  const updates = [
+    { id: 'enableLinkedin', type: 'checkbox', value: settings.enabledForLinkedin },
+    { id: 'linkedinTime', type: 'time', value: `${settings.linkedinAllowedHour.toString().padStart(2, '0')}:00` },
+    { id: 'enableTwitter', type: 'checkbox', value: settings.enabledForTwitter },
+    { id: 'twitterTime', type: 'time', value: `${settings.twitterAllowedHour.toString().padStart(2, '0')}:00` },
+    { id: 'enableFacebook', type: 'checkbox', value: settings.enabledForFacebook },
+    { id: 'facebookTime', type: 'time', value: `${settings.facebookAllowedHour.toString().padStart(2, '0')}:00` },
+    { id: 'allowedEndTime', type: 'time', value: `${settings.allowedEndHour.toString().padStart(2, '0')}:00` },
+    { id: 'totalWeekendBlock', type: 'checkbox', value: settings.totalWeekendBlock },
+    { id: 'vacationMode', type: 'checkbox', value: settings.vacationModeEnabled },
+    { id: 'redirectUrl', type: 'text', value: settings.redirectUrl }
+  ];
+  
+  updates.forEach(update => {
+    try {
+      const element = document.getElementById(update.id);
+      if (!element) {
+        console.warn(`UI element not found: ${update.id}`);
+        return;
+      }
+      
+      if (update.type === 'checkbox') {
+        element.checked = update.value;
+      } else {
+        element.value = update.value;
+      }
+    } catch (error) {
+      console.error(`Error updating UI element ${update.id}:`, error);
+    }
+  });
+}
+
+// Function to save social media settings with comprehensive validation
+function saveSocialMediaSettings() {
+  try {
+    // Collect and validate all settings
+    const settings = collectAndValidateSettings();
+    
+    // Send message to background script to save settings
+    SafeChromeAPI.runtime.sendMessage({ type: 'SET_SOCIAL_MEDIA_SETTINGS', settings: settings }, (response) => {
+      if (!response) {
+        ErrorSystem.showError('Failed to save settings - no response from extension');
+        return;
+      }
+      
+      if (response.success) {
+        ErrorSystem.showSuccess('Settings saved successfully');
+      } else {
+        ErrorSystem.showError('Failed to save settings - server error');
+      }
+    });
+  } catch (error) {
+    console.error('Error saving social media settings:', error);
+    ErrorSystem.showError(`Failed to save settings: ${error.message}`);
+  }
+}
+
+// Collect and validate settings from UI
+function collectAndValidateSettings() {
+  const errors = [];
+  let settings = {};
+  
+  try {
+    // Collect checkbox values
+    const checkboxFields = [
+      { id: 'enableLinkedin', key: 'enabledForLinkedin' },
+      { id: 'enableTwitter', key: 'enabledForTwitter' },
+      { id: 'enableFacebook', key: 'enabledForFacebook' },
+      { id: 'totalWeekendBlock', key: 'totalWeekendBlock' },
+      { id: 'vacationMode', key: 'vacationModeEnabled' }
+    ];
+    
+    checkboxFields.forEach(field => {
+      const element = document.getElementById(field.id);
+      if (!element) {
+        errors.push(`Missing UI element: ${field.id}`);
+        return;
+      }
+      settings[field.key] = element.checked;
+    });
+    
+    // Collect and validate time values
+    const timeFields = [
+      { id: 'linkedinTime', key: 'linkedinAllowedHour', name: 'LinkedIn time' },
+      { id: 'twitterTime', key: 'twitterAllowedHour', name: 'Twitter time' },
+      { id: 'facebookTime', key: 'facebookAllowedHour', name: 'Facebook time' },
+      { id: 'allowedEndTime', key: 'allowedEndHour', name: 'End time' }
+    ];
+    
+    timeFields.forEach(field => {
+      const element = document.getElementById(field.id);
+      if (!element) {
+        errors.push(`Missing UI element: ${field.id}`);
+        return;
+      }
+      
+      try {
+        const timeValue = element.value || '15:00';
+        const validation = ValidationUtils.validateTimeInput(timeValue, field.name);
+        settings[field.key] = validation.hour;
+      } catch (error) {
+        errors.push(`${field.name}: ${error.message}`);
+      }
+    });
+    
+    // Validate redirect URL
+    const urlElement = document.getElementById('redirectUrl');
+    if (!urlElement) {
+      errors.push('Missing redirect URL field');
+    } else {
+      try {
+        const urlValue = urlElement.value || 'https://read.readwise.io';
+        settings.redirectUrl = ValidationUtils.validateUrl(urlValue, 'Redirect URL');
+      } catch (error) {
+        errors.push(`Redirect URL: ${error.message}`);
+      }
+    }
+    
+    // Additional business logic validation
+    if (settings.linkedinAllowedHour >= settings.allowedEndHour) {
+      errors.push('LinkedIn start time must be before end time');
+    }
+    
+    if (settings.twitterAllowedHour >= settings.allowedEndHour) {
+      errors.push('Twitter start time must be before end time');
+    }
+    
+    if (settings.facebookAllowedHour >= settings.allowedEndHour) {
+      errors.push('Facebook start time must be before end time');
+    }
+    
+    if (errors.length > 0) {
+      throw new Error(errors.join('; '));
+    }
+    
+    return settings;
+  } catch (error) {
+    if (errors.length > 0) {
+      throw new Error(errors.join('; '));
+    }
+    throw error;
+  }
+}
+
+// Enhanced input validation system
+const InputValidation = {
+  // Show validation feedback for an input
+  showValidation: function(inputId, isValid, errorMessage = '') {
+    const input = document.getElementById(inputId);
+    const errorDiv = document.getElementById(inputId + '-error');
+    
+    if (!input) return;
+    
+    // Clear previous states
+    input.classList.remove('error-input', 'success-input');
+    
+    if (errorDiv) {
+      errorDiv.style.display = 'none';
+      errorDiv.textContent = '';
+    }
+    
+    if (isValid) {
+      input.classList.add('success-input');
+      setTimeout(() => {
+        input.classList.remove('success-input');
+      }, 2000);
+    } else {
+      input.classList.add('error-input');
+      if (errorDiv && errorMessage) {
+        errorDiv.textContent = errorMessage;
+        errorDiv.style.display = 'block';
+      }
+    }
+  },
+  
+  // Validate time input in real-time
+  validateTimeInput: function(inputId, fieldName) {
+    const input = document.getElementById(inputId);
+    if (!input) return true;
+    
+    try {
+      const validation = ValidationUtils.validateTimeInput(input.value, fieldName);
+      this.showValidation(inputId, true);
+      return true;
+    } catch (error) {
+      this.showValidation(inputId, false, error.message);
+      return false;
+    }
+  },
+  
+  // Validate URL input in real-time
+  validateUrlInput: function(inputId, fieldName) {
+    const input = document.getElementById(inputId);
+    if (!input) return true;
+    
+    try {
+      const validated = ValidationUtils.validateUrl(input.value || 'https://read.readwise.io', fieldName);
+      this.showValidation(inputId, true);
+      return true;
+    } catch (error) {
+      this.showValidation(inputId, false, error.message);
+      return false;
+    }
+  },
+  
+  // Validate business logic (start time vs end time)
+  validateTimeLogic: function() {
+    const endTimeInput = document.getElementById('allowedEndTime');
+    if (!endTimeInput) return true;
+    
+    const endHour = parseInt((endTimeInput.value || '19:00').split(':')[0], 10);
+    
+    const timeInputs = [
+      { id: 'linkedinTime', name: 'LinkedIn start time' },
+      { id: 'twitterTime', name: 'Twitter start time' },
+      { id: 'facebookTime', name: 'Facebook start time' }
+    ];
+    
+    let allValid = true;
+    
+    timeInputs.forEach(timeInput => {
+      const input = document.getElementById(timeInput.id);
+      if (input) {
+        const startHour = parseInt((input.value || '15:00').split(':')[0], 10);
+        if (startHour >= endHour) {
+          this.showValidation(timeInput.id, false, `${timeInput.name} must be before end time`);
+          allValid = false;
+        } else {
+          // Only clear error if it was a time logic error
+          const errorDiv = document.getElementById(timeInput.id + '-error');
+          if (errorDiv && errorDiv.textContent.includes('must be before end time')) {
+            this.showValidation(timeInput.id, true);
+          }
+        }
+      }
+    });
+    
+    return allValid;
+  }
+};
+
+// Add event listeners for social media settings changes with real-time validation
+const settingsConfig = [
+  {
+    ids: ['enableLinkedin', 'enableTwitter', 'enableFacebook', 'totalWeekendBlock', 'vacationMode'],
+    events: ['change'],
+    validator: null // Checkboxes don't need validation
+  },
+  {
+    ids: ['linkedinTime', 'twitterTime', 'facebookTime'],
+    events: ['change', 'blur'],
+    validator: (id) => {
+      const fieldNames = {
+        'linkedinTime': 'LinkedIn time',
+        'twitterTime': 'Twitter time', 
+        'facebookTime': 'Facebook time'
+      };
+      const isValid = InputValidation.validateTimeInput(id, fieldNames[id]);
+      InputValidation.validateTimeLogic(); // Also check time logic
+      return isValid;
+    }
+  },
+  {
+    ids: ['allowedEndTime'],
+    events: ['change', 'blur'],
+    validator: (id) => {
+      const isValid = InputValidation.validateTimeInput(id, 'End time');
+      InputValidation.validateTimeLogic(); // Also check time logic
+      return isValid;
+    }
+  },
+  {
+    ids: ['redirectUrl'],
+    events: ['change', 'blur'],
+    validator: (id) => InputValidation.validateUrlInput(id, 'Redirect URL')
+  }
+];
+
+settingsConfig.forEach(config => {
+  config.ids.forEach(id => {
+    const element = document.getElementById(id);
+    if (element) {
+      config.events.forEach(eventType => {
+        const handler = function() {
+          // Run validation if provided
+          let isValid = true;
+          if (config.validator) {
+            isValid = config.validator(id);
+          }
+          
+          // Only save if validation passed (or no validation needed)
+          if (isValid || !config.validator) {
+            saveSocialMediaSettings();
+          }
+        };
+        
+        element.addEventListener(eventType, handler);
+        PopupCleanup.trackEventListener(element, eventType, handler);
+      });
+    } else {
+      console.warn(`Element with ID ${id} not found for event listener.`);
+    }
+  });
+});
+
 
 // Set up all button event handlers
 function setupButtons() {
-  // AI stats reset button
-  document.getElementById('reset-stats').addEventListener('click', function() {
+  // AI stats reset button with error handling
+  const resetStatsHandler = function() {
     const emptyStats = {
       aiUsageCount: 0,
       bypassCount: 0,
       thoughtFirstCount: 0
     };
     
-    // Save to storage
-    chrome.storage.local.set({creativityGuardStats: emptyStats}, function() {
-      // Update display
-      updateStatsDisplay(emptyStats);
+    // Save to storage with error handling
+    SafeChromeAPI.storage.set({creativityGuardStats: emptyStats}, function(success) {
+      if (success) {
+        updateStatsDisplay(emptyStats);
+        ErrorSystem.showSuccess('Statistics reset successfully');
+      } else {
+        ErrorSystem.showError('Failed to reset statistics');
+      }
     });
-  });
+  };
   
-  // Social media settings save button
-  document.getElementById('save-social-settings').addEventListener('click', function() {
-    const settings = {
-      linkedinAllowedHour: parseInt(document.getElementById('linkedinTime').value.split(':')[0]),
-      twitterAllowedHour: parseInt(document.getElementById('twitterTime').value.split(':')[0]),
-      facebookAllowedHour: parseInt(document.getElementById('facebookTime').value.split(':')[0]),
-      allowedEndHour: parseInt(document.getElementById('allowedEndTime').value.split(':')[0]),
-      enabledForLinkedin: document.getElementById('enableLinkedin').checked,
-      enabledForTwitter: document.getElementById('enableTwitter').checked,
-      enabledForFacebook: document.getElementById('enableFacebook').checked,
-      totalWeekendBlock: document.getElementById('totalWeekendBlock').checked,
-      vacationModeEnabled: document.getElementById('vacationMode').checked, // Add vacation mode setting
-      redirectUrl: document.getElementById('redirectUrl').value || 'https://read.readwise.io',
-      visits: {} // Keep visit data from existing settings
-    };
-    
-    // Get existing visit data
-    chrome.storage.local.get(['socialMediaUsage'], function(result) {
-      if (result && result.socialMediaUsage && result.socialMediaUsage.visits) {
-        settings.visits = result.socialMediaUsage.visits;
+  const resetStatsButton = document.getElementById('reset-stats');
+  resetStatsButton.addEventListener('click', resetStatsHandler);
+  PopupCleanup.trackEventListener(resetStatsButton, 'click', resetStatsHandler);
+  
+  // Reset social media visits button with error handling
+  const resetVisitsHandler = function() {
+    SafeChromeAPI.storage.get(['socialMediaUsage'], function(result) {
+      if (!result) {
+        ErrorSystem.showError('Failed to load current settings');
+        return;
       }
       
-      // Save the updated settings
-      chrome.storage.local.set({socialMediaUsage: settings}, function() {
-        showSaveMessage('Settings saved!');
-      });
-      
-      // Also save settings using the background script method to ensure consistency
-      chrome.runtime.sendMessage({ type: 'SET_SOCIAL_MEDIA_SETTINGS', settings: settings }, (response) => {
-        if (chrome.runtime.lastError) {
-          console.error('Error saving social media settings:', chrome.runtime.lastError);
-        } else if (response && response.success) {
-          console.log('Social media settings saved successfully via background.');
-        }
-      });
+      try {
+        const settings = result.socialMediaUsage || {
+          linkedinAllowedHour: 15,
+          twitterAllowedHour: 15,
+          enabledForLinkedin: true,
+          enabledForTwitter: true
+        };
+        
+        // Reset visits
+        settings.visits = {};
+        
+        // Save the updated settings
+        SafeChromeAPI.storage.set({socialMediaUsage: settings}, function(success) {
+          if (success) {
+            ErrorSystem.showSuccess('Today\'s visits reset successfully');
+          } else {
+            ErrorSystem.showError('Failed to reset today\'s visits');
+          }
+        });
+      } catch (error) {
+        console.error('Error resetting visits:', error);
+        ErrorSystem.showError('Failed to reset visits: ' + error.message);
+      }
     });
-  });
+  };
   
-  // Reset social media visits button
-  document.getElementById('reset-social-visits').addEventListener('click', function() {
-    // Get existing settings
-    chrome.storage.local.get(['socialMediaUsage'], function(result) {
-      const settings = result.socialMediaUsage || {
-        linkedinAllowedHour: 15,
-        twitterAllowedHour: 15,
-        enabledForLinkedin: true,
-        enabledForTwitter: true
-      };
-      
-      // Reset visits
-      settings.visits = {};
-      
-      // Save the updated settings
-      chrome.storage.local.set({socialMediaUsage: settings}, function() {
-        showSaveMessage('Today\'s visits reset!');
-      });
-    });
-  });
+  const resetVisitsButton = document.getElementById('reset-social-visits');
+  resetVisitsButton.addEventListener('click', resetVisitsHandler);
+  PopupCleanup.trackEventListener(resetVisitsButton, 'click', resetVisitsHandler);
 }
 
 // Display confirmation message
@@ -313,20 +857,168 @@ function showSaveMessage(message) {
   }, 2000);
 }
 
-// Update the AI stats display
+// Enhanced stats display with visual progress bars and animations
 function updateStatsDisplay(stats) {
-  document.getElementById('ai-usage-count').textContent = stats.aiUsageCount;
-  document.getElementById('thought-first-count').textContent = stats.thoughtFirstCount;
-  document.getElementById('bypass-count').textContent = stats.bypassCount;
-  
-  // Calculate and display ratio
-  const totalInteractions = stats.thoughtFirstCount + stats.bypassCount;
-  let ratio = 0;
-  
-  if (totalInteractions > 0) {
-    ratio = Math.round((stats.thoughtFirstCount / totalInteractions) * 100);
+  if (!stats || typeof stats !== 'object') {
+    console.error('Invalid stats object provided');
+    return;
   }
   
-  document.getElementById('success-ratio').textContent = 
-    `You thought first on ${ratio}% of your AI interactions`;
+  try {
+    // Safely update each stat with animated counters
+    const elements = [
+      { id: 'ai-usage-count', value: stats.aiUsageCount || 0, color: '#3b82f6' },
+      { id: 'thought-first-count', value: stats.thoughtFirstCount || 0, color: '#10b981' },
+      { id: 'bypass-count', value: stats.bypassCount || 0, color: '#f59e0b' }
+    ];
+    
+    elements.forEach(element => {
+      const domElement = document.getElementById(element.id);
+      if (domElement) {
+        // Animate counter from current value to new value
+        animateCounter(domElement, element.value);
+      } else {
+        console.warn(`Stats display element not found: ${element.id}`);
+      }
+    });
+    
+    // Calculate and display enhanced ratio with progress visualization
+    const thoughtFirst = parseInt(stats.thoughtFirstCount, 10) || 0;
+    const bypassed = parseInt(stats.bypassCount, 10) || 0;
+    const totalInteractions = thoughtFirst + bypassed;
+    let ratio = 0;
+    
+    if (totalInteractions > 0) {
+      ratio = Math.round((thoughtFirst / totalInteractions) * 100);
+    }
+    
+    const ratioElement = document.getElementById('success-ratio');
+    if (ratioElement) {
+      updateRatioDisplay(ratioElement, ratio, thoughtFirst, totalInteractions);
+    } else {
+      console.warn('Success ratio element not found');
+    }
+  } catch (error) {
+    console.error('Error updating stats display:', error);
+    ErrorSystem.showError('Failed to update statistics display');
+  }
+}
+
+// Animate counter with easing
+function animateCounter(element, targetValue) {
+  const startValue = parseInt(element.textContent) || 0;
+  const duration = 800; // 800ms animation
+  const startTime = performance.now();
+  
+  function updateCounter(currentTime) {
+    const elapsed = currentTime - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    
+    // Easing function (ease-out-cubic)
+    const easedProgress = 1 - Math.pow(1 - progress, 3);
+    const currentValue = Math.round(startValue + (targetValue - startValue) * easedProgress);
+    
+    element.textContent = currentValue;
+    
+    if (progress < 1) {
+      requestAnimationFrame(updateCounter);
+    } else {
+      element.textContent = targetValue; // Ensure we end with exact target
+    }
+  }
+  
+  requestAnimationFrame(updateCounter);
+}
+
+// Enhanced ratio display with progress bar and insights
+function updateRatioDisplay(element, ratio, thoughtFirst, totalInteractions) {
+  // Clear existing content
+  element.innerHTML = '';
+  
+  // Create progress bar container
+  const progressContainer = document.createElement('div');
+  progressContainer.style.cssText = `
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 20px;
+    height: 8px;
+    margin: 12px 0;
+    overflow: hidden;
+    position: relative;
+  `;
+  
+  // Create progress bar fill
+  const progressFill = document.createElement('div');
+  progressFill.style.cssText = `
+    height: 100%;
+    background: linear-gradient(90deg, #10b981, #059669);
+    border-radius: 20px;
+    width: 0%;
+    transition: width 1s ease-out;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+  `;
+  
+  progressContainer.appendChild(progressFill);
+  
+  // Create main text
+  const mainText = document.createElement('div');
+  mainText.style.cssText = `
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    text-align: center;
+  `;
+  
+  // Create insight text
+  const insightText = document.createElement('div');
+  insightText.style.cssText = `
+    font-size: 13px;
+    opacity: 0.9;
+    text-align: center;
+    margin-top: 8px;
+  `;
+  
+  // Set content based on ratio
+  if (totalInteractions === 0) {
+    mainText.textContent = 'No AI interactions yet';
+    insightText.textContent = 'Start using AI tools to see your mindfulness stats';
+  } else {
+    mainText.textContent = `${ratio}% Mindful Usage`;
+    
+    // Animate progress bar
+    setTimeout(() => {
+      progressFill.style.width = `${ratio}%`;
+    }, 100);
+    
+    // Generate insights
+    let insight = '';
+    if (ratio >= 80) {
+      insight = `🎉 Excellent! You're being mindful in most AI interactions.`;
+    } else if (ratio >= 60) {
+      insight = `👍 Good job! You're thinking first in most cases.`;
+    } else if (ratio >= 40) {
+      insight = `📈 Room for improvement. Try pausing before using AI.`;
+    } else {
+      insight = `💡 Consider taking a moment to think first before using AI.`;
+    }
+    
+    insightText.textContent = insight;
+  }
+  
+  // Assemble the display
+  element.appendChild(mainText);
+  element.appendChild(progressContainer);
+  element.appendChild(insightText);
+  
+  // Add detailed stats
+  if (totalInteractions > 0) {
+    const detailsText = document.createElement('div');
+    detailsText.style.cssText = `
+      font-size: 11px;
+      opacity: 0.7;
+      text-align: center;
+      margin-top: 6px;
+    `;
+    detailsText.textContent = `${thoughtFirst} mindful / ${totalInteractions} total interactions`;
+    element.appendChild(detailsText);
+  }
 } 

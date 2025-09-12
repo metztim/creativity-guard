@@ -4,103 +4,386 @@
   <meta charset="UTF-8">
   <title>Creativity Guard</title>
   <style>
+    * {
+      box-sizing: border-box;
+    }
+    
     body {
-      width: 350px;
-      padding: 15px;
+      width: 380px;
+      padding: 0;
+      margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-    }
-    h1, h2 {
-      font-size: 18px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: #2d3748;
-      margin-top: 0;
+      min-height: 500px;
     }
+    
+    .container {
+      padding: 20px;
+      background: white;
+      border-radius: 12px 12px 0 0;
+      min-height: 100%;
+      position: relative;
+    }
+    
+    /* Loading states */
+    .loading {
+      opacity: 0.6;
+      pointer-events: none;
+      position: relative;
+    }
+    
+    .loading::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 20px;
+      height: 20px;
+      margin: -10px 0 0 -10px;
+      border: 2px solid #e2e8f0;
+      border-top-color: #4299e1;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #e2e8f0;
+      border-top-color: #4299e1;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 8px;
+    }
+    
+    .hidden {
+      display: none;
+    }
+    
+    /* Notification system */
+    .notification {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      color: white;
+      font-size: 13px;
+      font-weight: 500;
+      z-index: 10000;
+      max-width: 300px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      animation: slideInFromRight 0.3s ease-out;
+      transform: translateX(0);
+    }
+    
+    .notification.success {
+      background: #22c55e;
+    }
+    
+    .notification.error {
+      background: #ef4444;
+    }
+    
+    .notification.warning {
+      background: #f59e0b;
+      color: #1f2937;
+    }
+    
+    @keyframes slideInFromRight {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+    
+    @keyframes slideOutToRight {
+      from {
+        transform: translateX(0);
+        opacity: 1;
+      }
+      to {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+    }
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1a202c;
+      margin: 0 0 24px 0;
+      text-align: center;
+      position: relative;
+    }
+    
+    h1::before {
+      content: '🛡️';
+      margin-right: 8px;
+    }
+    
     h2 {
-      font-size: 16px;
-      margin-top: 20px;
+      font-size: 18px;
+      font-weight: 600;
+      color: #2d3748;
+      margin: 24px 0 16px 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    h2.stats-title::before {
+      content: '📊';
+    }
+    
+    h2.settings-title::before {
+      content: '⚙️';
     }
     .stats-container {
-      margin-top: 15px;
+      background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
     }
+    
     .stat-item {
       display: flex;
       justify-content: space-between;
-      margin-bottom: 10px;
-      padding-bottom: 10px;
-      border-bottom: 1px solid #edf2f7;
+      align-items: center;
+      margin-bottom: 16px;
+      padding: 16px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      border-left: 4px solid #4299e1;
+      transition: all 0.2s ease;
     }
+    
+    .stat-item:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+    }
+    
     .stat-item:last-child {
-      border-bottom: none;
+      margin-bottom: 0;
     }
+    
     .stat-label {
       color: #4a5568;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
+    
+    .stat-label::before {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      content: '';
+    }
+    
+    .stat-item:nth-child(1) .stat-label::before {
+      background: #3b82f6;
+    }
+    
+    .stat-item:nth-child(2) .stat-label::before {
+      background: #10b981;
+    }
+    
+    .stat-item:nth-child(3) .stat-label::before {
+      background: #f59e0b;
+    }
+    
     .stat-value {
-      font-weight: 600;
-      color: #2d3748;
+      font-weight: 700;
+      font-size: 24px;
+      color: #1a202c;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
     }
+    
     .ratio {
-      margin-top: 15px;
-      padding: 10px;
-      background-color: #f7fafc;
-      border-radius: 4px;
+      margin-top: 20px;
+      padding: 16px;
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: white;
+      border-radius: 12px;
       text-align: center;
+      font-weight: 600;
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .ratio::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+      animation: shimmer 2s infinite;
+    }
+    
+    @keyframes shimmer {
+      0% { left: -100%; }
+      100% { left: 100%; }
     }
     .reset-button {
-      margin-top: 15px;
-      padding: 8px 12px;
-      background-color: #e2e8f0;
-      color: #4a5568;
+      margin-top: 16px;
+      padding: 12px 20px;
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      color: white;
       border: none;
-      border-radius: 4px;
+      border-radius: 8px;
       cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
     }
+    
     .reset-button:hover {
-      background-color: #cbd5e0;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(239, 68, 68, 0.4);
+      background: linear-gradient(135deg, #dc2626, #b91c1c);
+    }
+    
+    .reset-button:active {
+      transform: translateY(0);
+    }
+    
+    .reset-button::before {
+      content: '🗑️';
     }
     .tab-container {
-      margin-top: 20px;
+      margin-top: 24px;
     }
+    
     .tab-buttons {
       display: flex;
-      border-bottom: 1px solid #edf2f7;
+      background: #f7fafc;
+      border-radius: 12px;
+      padding: 4px;
+      margin-bottom: 20px;
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
     }
+    
     .tab-button {
-      padding: 8px 15px;
-      background: none;
+      flex: 1;
+      padding: 12px 16px;
+      background: transparent;
       border: none;
       cursor: pointer;
       font-size: 14px;
-      color: #4a5568;
+      font-weight: 500;
+      color: #6b7280;
+      border-radius: 8px;
+      transition: all 0.2s ease;
+      position: relative;
     }
+    
+    .tab-button:hover {
+      color: #374151;
+      background: rgba(255, 255, 255, 0.5);
+    }
+    
     .tab-button.active {
-      border-bottom: 2px solid #4299e1;
-      color: #2d3748;
+      background: white;
+      color: #1f2937;
       font-weight: 600;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      transform: translateY(-1px);
+    }
+    
+    .tab-button:focus {
+      outline: 2px solid #3b82f6;
+      outline-offset: 2px;
     }
     .tab-content {
       display: none;
-      padding: 15px 0;
+      padding: 0;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.3s ease;
     }
+    
     .tab-content.active {
       display: block;
+      opacity: 1;
+      transform: translateY(0);
     }
+    .setting-card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+      border: 1px solid #e5e7eb;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+      transition: all 0.2s ease;
+    }
+    
+    .setting-card:hover {
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+      border-color: #d1d5db;
+    }
+    
     .setting-item {
-      margin-bottom: 15px;
+      margin-bottom: 20px;
     }
+    
+    .setting-item:last-child {
+      margin-bottom: 0;
+    }
+    
     .setting-label {
       display: block;
-      margin-bottom: 5px;
-      color: #4a5568;
+      margin-bottom: 8px;
+      color: #374151;
+      font-weight: 500;
     }
+    
     .setting-control {
-      margin-top: 5px;
+      margin-top: 8px;
     }
+    
     .checkbox-label {
       display: flex;
       align-items: center;
+      padding: 12px;
+      background: #f9fafb;
+      border-radius: 8px;
+      border: 1px solid #e5e7eb;
+      cursor: pointer;
+      transition: all 0.2s ease;
     }
+    
+    .checkbox-label:hover {
+      background: #f3f4f6;
+      border-color: #d1d5db;
+    }
+    
     .checkbox-label input {
-      margin-right: 8px;
+      margin-right: 12px;
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
     }
     .settings-section {
       margin-top: 20px;
@@ -115,13 +398,75 @@
       width: 100%;
     }
     .helper-text {
-      font-size: 0.8em;
-      color: #718096;
+      font-size: 12px;
+      color: #6b7280;
+      margin-top: 6px;
+      padding: 8px 12px;
+      background: #f9fafb;
+      border-radius: 6px;
+      border-left: 3px solid #e5e7eb;
+    }
+    .error-input {
+      border-color: #ef4444 !important;
+      background-color: #fef2f2 !important;
+      animation: shake 0.3s ease-in-out;
+    }
+    
+    .error-message {
+      color: #ef4444;
+      font-size: 12px;
+      margin-top: 6px;
+      display: none;
+      padding: 8px 12px;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 6px;
+      font-weight: 500;
+    }
+    
+    .success-input {
+      border-color: #10b981 !important;
+      background-color: #f0fdf4 !important;
+      animation: success-pulse 0.3s ease-in-out;
+    }
+    
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-4px); }
+      75% { transform: translateX(4px); }
+    }
+    
+    @keyframes success-pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.02); }
+      100% { transform: scale(1); }
+    }
+    input[type="time"], input[type="text"] {
+      padding: 12px 16px;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+      background: white;
+      width: 100%;
+    }
+    
+    input[type="time"]:focus, input[type="text"]:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+      transform: translateY(-1px);
+    }
+    
+    input[type="time"]:hover, input[type="text"]:hover {
+      border-color: #d1d5db;
     }
   </style>
 </head>
 <body>
-  <h1>Creativity Guard</h1>
+  <div class="container">
+    <h1>Creativity Guard</h1>
   
   <div class="tab-container">
     <div class="tab-buttons">
@@ -132,83 +477,112 @@
     <div id="ai-stats" class="tab-content active">
       <div class="stats-container">
         <div class="stat-item">
-          <div class="stat-label">AI Usage Attempts:</div>
+          <div class="stat-label">AI Usage Attempts</div>
           <div class="stat-value" id="ai-usage-count">0</div>
         </div>
         <div class="stat-item">
-          <div class="stat-label">Thought First:</div>
+          <div class="stat-label">Thought First</div>
           <div class="stat-value" id="thought-first-count">0</div>
         </div>
         <div class="stat-item">
-          <div class="stat-label">Bypassed Check:</div>
+          <div class="stat-label">Bypassed Check</div>
           <div class="stat-value" id="bypass-count">0</div>
+        </div>
+        
+        <div class="ratio" id="success-ratio">
+          You thought first on 0% of your AI interactions
         </div>
       </div>
       
-      <div class="ratio" id="success-ratio">
-        You thought first on 0% of your AI interactions
-      </div>
-      
-      <button class="reset-button" id="reset-stats">Reset Stats</button>
+      <button class="reset-button" id="reset-stats" tabindex="0" role="button" aria-label="Reset all statistics">
+        <span class="hidden spinner" id="reset-spinner"></span>
+        Reset Stats
+      </button>
     </div>
     
     <div id="social-media" class="tab-content">
-      <h2>Social Media Limits</h2>
-      
-      <div class="settings-section">
-        <h3>Social Media Settings</h3>
-        <div class="setting-group">
-          <label>
-            <input type="checkbox" id="enableLinkedin" checked>
+      <div class="setting-card">
+        <h2 class="settings-title">Platform Settings</h2>
+        
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="enableLinkedin" checked aria-describedby="linkedin-help">
             Enable for LinkedIn
           </label>
-          <div class="time-setting">
-            <label for="linkedinTime">Allowed after:</label>
-            <input type="time" id="linkedinTime" value="15:00">
+          <div class="setting-control">
+            <label for="linkedinTime" class="setting-label">Allowed after:</label>
+            <input type="time" id="linkedinTime" value="15:00" aria-describedby="linkedinTime-error">
+            <div class="error-message" id="linkedinTime-error" role="alert"></div>
           </div>
         </div>
-        <div class="setting-group">
-          <label>
-            <input type="checkbox" id="enableTwitter" checked>
+        
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="enableTwitter" checked aria-describedby="twitter-help">
             Enable for Twitter/X
           </label>
-          <div class="time-setting">
-            <label for="twitterTime">Allowed after:</label>
-            <input type="time" id="twitterTime" value="15:00">
+          <div class="setting-control">
+            <label for="twitterTime" class="setting-label">Allowed after:</label>
+            <input type="time" id="twitterTime" value="15:00" aria-describedby="twitterTime-error">
+            <div class="error-message" id="twitterTime-error" role="alert"></div>
           </div>
         </div>
-        <div class="setting-group">
-          <label>
-            <input type="checkbox" id="enableFacebook" checked>
+        
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="enableFacebook" checked aria-describedby="facebook-help">
             Enable for Facebook
           </label>
-          <div class="time-setting">
-            <label for="facebookTime">Allowed after:</label>
-            <input type="time" id="facebookTime" value="15:00">
+          <div class="setting-control">
+            <label for="facebookTime" class="setting-label">Allowed after:</label>
+            <input type="time" id="facebookTime" value="15:00" aria-describedby="facebookTime-error">
+            <div class="error-message" id="facebookTime-error" role="alert"></div>
           </div>
-        </div>
-        <div class="setting-item">
-          <label for="allowedEndTime">Allowed window ends at:</label>
-          <input type="time" id="allowedEndTime" value="19:00">
-          <div class="helper-text">Social media access is hard-blocked outside this time window on weekdays (no "Continue" option)</div>
-        </div>
-        <div class="setting-item">
-          <label for="totalWeekendBlock">Block completely on weekends:</label>
-          <input type="checkbox" id="totalWeekendBlock">
-        </div>
-        <div class="setting-item">
-          <label for="vacationMode">Vacation Mode (Indefinite Weekend Block):</label>
-          <input type="checkbox" id="vacationMode">
-        </div>
-        <div class="setting-item">
-          <label for="redirectUrl">Redirect URL:</label>
-          <input type="text" id="redirectUrl">
         </div>
       </div>
       
-      <button class="reset-button" id="reset-social-visits">Reset Today's Visits</button>
-      <button class="reset-button" id="save-social-settings">Save Settings</button>
+      <div class="setting-card">
+        <h2 class="settings-title">Time Restrictions</h2>
+        
+        <div class="setting-item">
+          <label for="allowedEndTime" class="setting-label">Allowed window ends at:</label>
+          <input type="time" id="allowedEndTime" value="19:00" aria-describedby="allowedEndTime-error allowedEndTime-help">
+          <div class="error-message" id="allowedEndTime-error" role="alert"></div>
+          <div class="helper-text" id="allowedEndTime-help">Social media access is hard-blocked outside this time window on weekdays (no "Continue" option)</div>
+        </div>
+        
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="totalWeekendBlock" aria-describedby="weekend-help">
+            Block completely on weekends
+          </label>
+        </div>
+        
+        <div class="setting-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="vacationMode" aria-describedby="vacation-help">
+            Vacation Mode (Indefinite Weekend Block)
+          </label>
+        </div>
+      </div>
+      
+      <div class="setting-card">
+        <h2 class="settings-title">Redirect Settings</h2>
+        
+        <div class="setting-item">
+          <label for="redirectUrl" class="setting-label">Redirect URL:</label>
+          <input type="text" id="redirectUrl" placeholder="https://read.readwise.io" aria-describedby="redirectUrl-error redirectUrl-help">
+          <div class="error-message" id="redirectUrl-error" role="alert"></div>
+          <div class="helper-text" id="redirectUrl-help">URL where you'll be redirected when blocked from social media</div>
+        </div>
+      </div>
+      
+      <button class="reset-button" id="reset-social-visits" tabindex="0" role="button" aria-label="Reset today's social media visits">
+        <span class="hidden spinner" id="visits-spinner"></span>
+        Reset Today's Visits
+      </button>
     </div>
+  </div>
   </div>
   
   <script src="popup.js"></script>
