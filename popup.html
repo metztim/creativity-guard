@@ -472,6 +472,7 @@
     <div class="tab-buttons">
       <button class="tab-button active" data-tab="ai-stats">AI Stats</button>
       <button class="tab-button" data-tab="social-media">Social Media</button>
+      <button class="tab-button" data-tab="extension-tracking">Extension</button>
     </div>
     
     <div id="ai-stats" class="tab-content active">
@@ -580,6 +581,41 @@
       <button class="reset-button" id="reset-social-visits" tabindex="0" role="button" aria-label="Reset today's social media visits">
         <span class="hidden spinner" id="visits-spinner"></span>
         Reset Today's Visits
+      </button>
+    </div>
+
+    <div id="extension-tracking" class="tab-content">
+      <div class="stats-container">
+        <h2 class="stats-title">Extension Usage Patterns</h2>
+
+        <div class="stat-item">
+          <div class="stat-label">Times Disabled</div>
+          <div class="stat-value" id="disable-count">0</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Total Time Disabled</div>
+          <div class="stat-value" id="total-disabled-time">0 min</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Avg Disable Duration</div>
+          <div class="stat-value" id="avg-disabled-time">0 min</div>
+        </div>
+
+        <div class="ratio" id="extension-status">
+          Extension is currently enabled
+        </div>
+      </div>
+
+      <div class="setting-card">
+        <h2 class="settings-title">Recent Activity</h2>
+        <div id="recent-activity" style="max-height: 200px; overflow-y: auto;">
+          <div class="helper-text">No recent activity</div>
+        </div>
+      </div>
+
+      <button class="reset-button" id="reset-extension-stats" tabindex="0" role="button" aria-label="Reset extension tracking statistics">
+        <span class="hidden spinner" id="extension-spinner"></span>
+        Reset Extension Stats
       </button>
     </div>
   </div>

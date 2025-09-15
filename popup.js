@@ -283,13 +283,16 @@ window.addEventListener('unload', () => PopupCleanup.cleanup());
 document.addEventListener('DOMContentLoaded', function() {
   // Set up tab navigation
   setupTabs();
-  
+
   // Load AI stats
   loadAIStats();
-  
+
   // Load social media settings
   loadSocialMediaSettings();
-  
+
+  // Load extension tracking stats
+  loadExtensionTrackingStats();
+
   // Set up buttons
   setupButtons();
 
@@ -318,6 +321,121 @@ function setupTabs() {
     button.addEventListener('click', clickHandler);
     PopupCleanup.trackEventListener(button, 'click', clickHandler);
   });
+}
+
+// Load extension tracking stats with error handling
+function loadExtensionTrackingStats() {
+  SafeChromeAPI.storage.get(['extensionTrackingStats'], function(result) {
+    if (!result) {
+      console.warn('No extension tracking stats result returned, using defaults');
+      updateExtensionStatsDisplay(null);
+      return;
+    }
+
+    try {
+      const stats = result.extensionTrackingStats;
+      updateExtensionStatsDisplay(stats);
+    } catch (error) {
+      console.error('Error processing extension tracking stats:', error);
+      updateExtensionStatsDisplay(null);
+    }
+  });
+}
+
+// Update extension tracking stats display
+function updateExtensionStatsDisplay(stats) {
+  const elements = {
+    disableCount: document.getElementById('disable-count'),
+    totalDisabledTime: document.getElementById('total-disabled-time'),
+    avgDisabledTime: document.getElementById('avg-disabled-time'),
+    extensionStatus: document.getElementById('extension-status'),
+    recentActivity: document.getElementById('recent-activity')
+  };
+
+  if (!stats) {
+    // No stats yet
+    elements.disableCount.textContent = '0';
+    elements.totalDisabledTime.textContent = '0 min';
+    elements.avgDisabledTime.textContent = '0 min';
+    elements.extensionStatus.textContent = 'Extension is currently enabled';
+    elements.extensionStatus.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+    elements.recentActivity.innerHTML = '<div class="helper-text">No recent activity</div>';
+    return;
+  }
+
+  // Update disable count
+  elements.disableCount.textContent = stats.disableCount || 0;
+
+  // Update total disabled time
+  const totalMinutes = Math.round((stats.totalDisabledDuration || 0) / 60000);
+  if (totalMinutes < 60) {
+    elements.totalDisabledTime.textContent = `${totalMinutes} min`;
+  } else {
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    elements.totalDisabledTime.textContent = `${hours}h ${mins}m`;
+  }
+
+  // Calculate average disabled time
+  const avgMinutes = stats.disableCount > 0 ? Math.round(totalMinutes / stats.disableCount) : 0;
+  if (avgMinutes < 60) {
+    elements.avgDisabledTime.textContent = `${avgMinutes} min`;
+  } else {
+    const hours = Math.floor(avgMinutes / 60);
+    const mins = avgMinutes % 60;
+    elements.avgDisabledTime.textContent = `${hours}h ${mins}m`;
+  }
+
+  // Update status
+  elements.extensionStatus.textContent = 'Extension is currently enabled';
+  elements.extensionStatus.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+
+  // Update recent activity
+  const recentEvents = [];
+
+  // Combine disable and enable events
+  if (stats.disableEvents) {
+    stats.disableEvents.slice(-5).forEach(event => {
+      recentEvents.push({
+        type: 'disable',
+        timestamp: event.timestamp,
+        date: event.date
+      });
+    });
+  }
+
+  if (stats.enableEvents) {
+    stats.enableEvents.slice(-5).forEach(event => {
+      recentEvents.push({
+        type: 'enable',
+        timestamp: event.timestamp,
+        date: event.date,
+        duration: event.disabledDurationMinutes
+      });
+    });
+  }
+
+  // Sort by timestamp descending
+  recentEvents.sort((a, b) => b.timestamp - a.timestamp);
+
+  if (recentEvents.length === 0) {
+    elements.recentActivity.innerHTML = '<div class="helper-text">No recent activity</div>';
+  } else {
+    let activityHtml = '<div style="font-size: 12px;">';
+    recentEvents.slice(0, 10).forEach(event => {
+      const date = new Date(event.date);
+      const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+      if (event.type === 'disable') {
+        activityHtml += `<div style="padding: 4px 0; color: #ef4444;">🔴 Disabled at ${timeStr} on ${dateStr}</div>`;
+      } else {
+        activityHtml += `<div style="padding: 4px 0; color: #10b981;">🟢 Re-enabled at ${timeStr} on ${dateStr} (was off for ${event.duration || 0} min)</div>`;
+      }
+    });
+    activityHtml += '</div>';
+    elements.recentActivity.innerHTML = activityHtml;
+  }
 }
 
 // Load AI usage stats with error handling
@@ -826,6 +944,33 @@ function setupButtons() {
   const resetVisitsButton = document.getElementById('reset-social-visits');
   resetVisitsButton.addEventListener('click', resetVisitsHandler);
   PopupCleanup.trackEventListener(resetVisitsButton, 'click', resetVisitsHandler);
+
+  // Reset extension tracking stats button
+  const resetExtensionStatsHandler = function() {
+    const emptyStats = {
+      disableCount: 0,
+      disableEvents: [],
+      enableEvents: [],
+      totalDisabledDuration: 0,
+      lastActiveTimestamp: Date.now()
+    };
+
+    // Save to storage with error handling
+    SafeChromeAPI.storage.set({extensionTrackingStats: emptyStats}, function(success) {
+      if (success) {
+        updateExtensionStatsDisplay(emptyStats);
+        ErrorSystem.showSuccess('Extension statistics reset successfully');
+      } else {
+        ErrorSystem.showError('Failed to reset extension statistics');
+      }
+    });
+  };
+
+  const resetExtensionStatsButton = document.getElementById('reset-extension-stats');
+  if (resetExtensionStatsButton) {
+    resetExtensionStatsButton.addEventListener('click', resetExtensionStatsHandler);
+    PopupCleanup.trackEventListener(resetExtensionStatsButton, 'click', resetExtensionStatsHandler);
+  }
 }
 
 // Display confirmation message

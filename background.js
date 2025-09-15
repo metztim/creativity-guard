@@ -268,20 +268,124 @@ function isValidUrl(string) {
   }
 }
 
+// Track extension disable/enable patterns
+async function trackExtensionDisabled() {
+  const timestamp = Date.now();
+
+  try {
+    const result = await chrome.storage.local.get(['extensionTrackingStats']);
+    const stats = result.extensionTrackingStats || {
+      disableCount: 0,
+      disableEvents: [],
+      totalDisabledDuration: 0,
+      lastActiveTimestamp: timestamp
+    };
+
+    // Record disable event
+    stats.disableCount++;
+    stats.disableEvents.push({
+      timestamp: timestamp,
+      date: new Date(timestamp).toISOString()
+    });
+
+    // Keep only last 100 events to prevent storage bloat
+    if (stats.disableEvents.length > 100) {
+      stats.disableEvents = stats.disableEvents.slice(-100);
+    }
+
+    stats.lastActiveTimestamp = timestamp;
+
+    await chrome.storage.local.set({ extensionTrackingStats: stats });
+    console.log('Extension disable tracked:', stats.disableCount, 'total disables');
+  } catch (error) {
+    console.error('Error tracking extension disable:', error);
+  }
+}
+
+async function calculateDisabledDuration() {
+  const currentTime = Date.now();
+
+  try {
+    const result = await chrome.storage.local.get(['extensionTrackingStats']);
+    const stats = result.extensionTrackingStats;
+
+    if (stats && stats.lastActiveTimestamp) {
+      // Calculate how long the extension was disabled
+      const disabledDuration = currentTime - stats.lastActiveTimestamp;
+
+      // Only count if disabled for more than 10 seconds (to filter out reloads)
+      if (disabledDuration > 10000) {
+        stats.totalDisabledDuration = (stats.totalDisabledDuration || 0) + disabledDuration;
+
+        // Add re-enable event with duration
+        if (!stats.enableEvents) {
+          stats.enableEvents = [];
+        }
+
+        stats.enableEvents.push({
+          timestamp: currentTime,
+          date: new Date(currentTime).toISOString(),
+          disabledDurationMs: disabledDuration,
+          disabledDurationMinutes: Math.round(disabledDuration / 60000)
+        });
+
+        // Keep only last 100 events
+        if (stats.enableEvents.length > 100) {
+          stats.enableEvents = stats.enableEvents.slice(-100);
+        }
+
+        await chrome.storage.local.set({ extensionTrackingStats: stats });
+        console.log('Extension was disabled for', Math.round(disabledDuration / 60000), 'minutes');
+      }
+    }
+
+    // Update last active timestamp for next calculation
+    await chrome.storage.local.set({
+      extensionTrackingStats: {
+        ...stats,
+        lastActiveTimestamp: currentTime
+      }
+    });
+  } catch (error) {
+    console.error('Error calculating disabled duration:', error);
+  }
+}
+
+// Listen for when this extension is disabled
+chrome.management.onDisabled.addListener((info) => {
+  if (info.id === chrome.runtime.id) {
+    trackExtensionDisabled();
+  }
+});
+
 // Handle extension startup errors
 chrome.runtime.onStartup.addListener(() => {
   console.log('Creativity Guard extension started');
+  // Calculate how long we were disabled when restarting
+  calculateDisabledDuration();
 });
 
 chrome.runtime.onInstalled.addListener((details) => {
   try {
     console.log('Creativity Guard extension installed/updated:', details.reason);
-    
+
     // On install, we could initialize default settings if needed
     if (details.reason === 'install') {
       console.log('First time installation detected');
+      // Initialize extension tracking stats
+      chrome.storage.local.set({
+        extensionTrackingStats: {
+          disableCount: 0,
+          disableEvents: [],
+          enableEvents: [],
+          totalDisabledDuration: 0,
+          lastActiveTimestamp: Date.now()
+        }
+      });
     } else if (details.reason === 'update') {
       console.log('Extension updated to version:', chrome.runtime.getManifest().version);
+      // Calculate disabled duration after update
+      calculateDisabledDuration();
     }
   } catch (error) {
     console.error('Error handling extension install/update:', error);

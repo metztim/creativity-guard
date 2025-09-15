@@ -3,7 +3,7 @@
   "name": "Creativity Guard",
   "version": "1.0",
   "description": "A gentle reminder to think for yourself before using AI tools",
-  "permissions": ["storage", "tabs"],
+  "permissions": ["storage", "tabs", "management"],
   "background": {
     "service_worker": "background.js"
   },
