@@ -23,6 +23,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       handleSetSocialMediaSettings(request.settings, sendResponse);
       return true; // Required for async response
     }
+
+    if (request.type === 'RECORD_EXTENSION_DISABLE') {
+      handleRecordExtensionDisable(sendResponse);
+      return true; // Required for async response
+    }
     
     // Handle unknown message types
     console.warn('Unknown message type received:', request.type);
@@ -268,46 +273,21 @@ function isValidUrl(string) {
   }
 }
 
-// Track extension disable/enable patterns
-async function trackExtensionDisabled() {
-  const timestamp = Date.now();
-
-  try {
-    const result = await chrome.storage.local.get(['extensionTrackingStats']);
-    const stats = result.extensionTrackingStats || {
-      disableCount: 0,
-      disableEvents: [],
-      totalDisabledDuration: 0,
-      lastActiveTimestamp: timestamp
-    };
-
-    // Record disable event
-    stats.disableCount++;
-    stats.disableEvents.push({
-      timestamp: timestamp,
-      date: new Date(timestamp).toISOString()
-    });
-
-    // Keep only last 100 events to prevent storage bloat
-    if (stats.disableEvents.length > 100) {
-      stats.disableEvents = stats.disableEvents.slice(-100);
-    }
-
-    stats.lastActiveTimestamp = timestamp;
-
-    await chrome.storage.local.set({ extensionTrackingStats: stats });
-    console.log('Extension disable tracked:', stats.disableCount, 'total disables');
-  } catch (error) {
-    console.error('Error tracking extension disable:', error);
-  }
-}
+// Note: Extensions cannot track their own disabling since the background script stops
+// We track disable/enable events by detecting when the extension starts up again
 
 async function calculateDisabledDuration() {
   const currentTime = Date.now();
 
   try {
     const result = await chrome.storage.local.get(['extensionTrackingStats']);
-    const stats = result.extensionTrackingStats;
+    const stats = result.extensionTrackingStats || {
+      disableCount: 0,
+      disableEvents: [],
+      enableEvents: [],
+      totalDisabledDuration: 0,
+      lastActiveTimestamp: currentTime
+    };
 
     if (stats && stats.lastActiveTimestamp) {
       // Calculate how long the extension was disabled
@@ -315,6 +295,12 @@ async function calculateDisabledDuration() {
 
       // Only count if disabled for more than 10 seconds (to filter out reloads)
       if (disabledDuration > 10000) {
+        // Increment disable count (each re-enable implies a previous disable)
+        stats.disableCount = (stats.disableCount || 0) + 1;
+
+        // Also record in the same format as bypass events for consistency
+        recordDisableEvent();
+
         stats.totalDisabledDuration = (stats.totalDisabledDuration || 0) + disabledDuration;
 
         // Add re-enable event with duration
@@ -336,6 +322,7 @@ async function calculateDisabledDuration() {
 
         await chrome.storage.local.set({ extensionTrackingStats: stats });
         console.log('Extension was disabled for', Math.round(disabledDuration / 60000), 'minutes');
+        console.log('Total disable count:', stats.disableCount);
       }
     }
 
@@ -351,12 +338,8 @@ async function calculateDisabledDuration() {
   }
 }
 
-// Listen for when this extension is disabled
-chrome.management.onDisabled.addListener((info) => {
-  if (info.id === chrome.runtime.id) {
-    trackExtensionDisabled();
-  }
-});
+// Note: chrome.management.onDisabled won't work for tracking our own extension
+// because the background script stops running when disabled
 
 // Handle extension startup errors
 chrome.runtime.onStartup.addListener(() => {
@@ -396,6 +379,37 @@ chrome.runtime.onInstalled.addListener((details) => {
 chrome.runtime.onSuspend.addListener(() => {
   console.log('Creativity Guard extension suspending');
 });
+
+// Record disable event in the same format as bypass events
+function recordDisableEvent() {
+  chrome.storage.local.get(['creativityGuardSocialMedia'], (result) => {
+    const settings = result.creativityGuardSocialMedia || {};
+    if (!settings.usageHistory) {
+      settings.usageHistory = [];
+    }
+
+    // Add disable event
+    settings.usageHistory.push({
+      timestamp: Date.now(),
+      action: 'disabled'
+    });
+
+    // Clean up entries older than 24 hours
+    const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
+    settings.usageHistory = settings.usageHistory.filter(entry =>
+      entry.timestamp > twentyFourHoursAgo
+    );
+
+    // Save back to storage
+    chrome.storage.local.set({ creativityGuardSocialMedia: settings });
+  });
+}
+
+// Handle manual recording of extension disable (for testing)
+function handleRecordExtensionDisable(sendResponse) {
+  recordDisableEvent();
+  sendResponse({ success: true });
+}
 
 // Log any unhandled errors in the background script
 self.addEventListener('error', (event) => {

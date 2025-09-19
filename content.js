@@ -1,3 +1,81 @@
+// Early blocker for social media and news sites - shows immediately while settings load
+function injectEarlyBlocker() {
+  // Check if we're on a blocked site (social media or news)
+  const hostname = window.location.hostname;
+  const isBlockedSite =
+    hostname.includes('linkedin.com') ||
+    hostname.includes('twitter.com') ||
+    hostname.includes('x.com') ||
+    hostname.includes('facebook.com') ||
+    hostname.includes('theguardian.com') ||
+    hostname.includes('nytimes.com') ||
+    hostname.includes('washingtonpost.com') ||
+    hostname.includes('bbc.com') ||
+    hostname.includes('cnn.com') ||
+    hostname.includes('reddit.com');
+
+  if (!isBlockedSite) {
+    return null;
+  }
+
+  // Create immediate full-screen blocker
+  const earlyBlocker = document.createElement('div');
+  earlyBlocker.id = 'creativity-guard-early-blocker';
+  earlyBlocker.style.cssText = `
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    background: #000000 !important;
+    z-index: 2147483647 !important;
+    display: block !important;
+    opacity: 1 !important;
+    pointer-events: all !important;
+  `;
+
+  // Add loading message
+  const loadingMessage = document.createElement('div');
+  loadingMessage.style.cssText = `
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 18px;
+    text-align: center;
+  `;
+  loadingMessage.textContent = 'Checking access permissions...';
+  earlyBlocker.appendChild(loadingMessage);
+
+  // Inject as first element in body or html
+  if (document.body) {
+    document.body.insertBefore(earlyBlocker, document.body.firstChild);
+  } else if (document.documentElement) {
+    document.documentElement.appendChild(earlyBlocker);
+  } else {
+    // If DOM not ready, inject immediately when it is
+    const injectWhenReady = () => {
+      if (document.body) {
+        document.body.insertBefore(earlyBlocker, document.body.firstChild);
+      } else if (document.documentElement) {
+        document.documentElement.appendChild(earlyBlocker);
+      } else {
+        requestAnimationFrame(injectWhenReady);
+      }
+    };
+    injectWhenReady();
+  }
+
+  return earlyBlocker;
+}
+
+// Inject early blocker immediately for social media sites
+const earlyBlockerElement = injectEarlyBlocker();
+
 // Resource tracking and cleanup system
 const CreativityGuardCleanup = {
   observers: new Set(),
@@ -114,6 +192,12 @@ const CreativityGuardCleanup = {
           element.remove();
         }
       });
+
+      // Also remove early blocker if it exists
+      const earlyBlocker = document.getElementById('creativity-guard-early-blocker');
+      if (earlyBlocker) {
+        earlyBlocker.remove();
+      }
     } catch (e) {
       console.warn('Error removing extension DOM elements:', e);
     }
@@ -147,40 +231,146 @@ let stats = {
 };
 
 
-// Simple wrapper for chrome.storage operations
+// Enhanced wrapper for chrome.storage operations with context validation and fallback
 const storage = {
+  // Check if extension context is still valid
+  isContextValid: function() {
+    try {
+      // Check if chrome.runtime exists and has an id
+      return !!(chrome && chrome.runtime && chrome.runtime.id);
+    } catch (e) {
+      return false;
+    }
+  },
+
+  // Log context invalidation once
+  contextInvalidLogged: false,
+
+  // Fallback to sessionStorage when context is invalid
+  fallbackGet: function(key) {
+    try {
+      const stored = sessionStorage.getItem('creativityGuard_' + key);
+      return stored ? JSON.parse(stored) : null;
+    } catch (e) {
+      return null;
+    }
+  },
+
+  fallbackSet: function(key, value) {
+    try {
+      sessionStorage.setItem('creativityGuard_' + key, JSON.stringify(value));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  },
+
   get: function(key, callback) {
     try {
+      // Check if context is valid before attempting storage access
+      if (!this.isContextValid()) {
+        if (!this.contextInvalidLogged) {
+          console.log('CreativityGuard: Using temporary storage (extension was updated/reloaded)');
+          this.contextInvalidLogged = true;
+        }
+        // Use fallback storage
+        const fallbackValue = this.fallbackGet(key);
+        if (callback) callback(fallbackValue);
+        return;
+      }
+
       chrome.storage.local.get([key], function(result) {
         if (chrome.runtime.lastError) {
-          console.error('Storage get error:', chrome.runtime.lastError);
-          if (callback) callback(null);
+          // Check if it's a context invalidation error
+          if (chrome.runtime.lastError.message &&
+              chrome.runtime.lastError.message.includes('Extension context invalidated')) {
+            if (!storage.contextInvalidLogged) {
+              console.log('CreativityGuard: Using temporary storage (extension was updated/reloaded)');
+              storage.contextInvalidLogged = true;
+            }
+            // Try fallback storage
+            const fallbackValue = storage.fallbackGet(key);
+            if (callback) callback(fallbackValue);
+          } else {
+            console.error('Storage get error:', chrome.runtime.lastError);
+            if (callback) callback(null);
+          }
           return;
+        }
+        // Success - also save to fallback for potential future use
+        if (result[key] !== undefined) {
+          storage.fallbackSet(key, result[key]);
         }
         if (callback) callback(result[key]);
       });
     } catch (e) {
-      console.error('Error calling storage get:', e);
-      if (callback) callback(null);
+      // Check if it's an extension context error
+      if (e.message && e.message.includes('Extension context invalidated')) {
+        if (!this.contextInvalidLogged) {
+          console.warn('CreativityGuard: Extension context lost. Using temporary storage.');
+          this.contextInvalidLogged = true;
+        }
+        // Use fallback storage
+        const fallbackValue = this.fallbackGet(key);
+        if (callback) callback(fallbackValue);
+      } else {
+        console.error('Error calling storage get:', e);
+        if (callback) callback(null);
+      }
     }
   },
-  
+
   set: function(key, value, callback) {
     try {
+      // Always try to save to fallback storage first
+      this.fallbackSet(key, value);
+
+      // Check if context is valid before attempting storage access
+      if (!this.isContextValid()) {
+        if (!this.contextInvalidLogged) {
+          console.warn('CreativityGuard: Cannot save to extension storage - context invalidated. Data saved temporarily. Please refresh the page.');
+          this.contextInvalidLogged = true;
+        }
+        if (callback) callback(true); // Return true since we saved to fallback
+        return;
+      }
+
       const data = {};
       data[key] = value;
-      
+
       chrome.storage.local.set(data, function() {
         if (chrome.runtime.lastError) {
-          console.error('Storage set error:', chrome.runtime.lastError);
-          if (callback) callback(false);
+          // Check if it's a context invalidation error
+          if (chrome.runtime.lastError.message &&
+              chrome.runtime.lastError.message.includes('Extension context invalidated')) {
+            if (!storage.contextInvalidLogged) {
+              console.warn('CreativityGuard: Extension was updated or reloaded. Data saved temporarily.');
+              storage.contextInvalidLogged = true;
+            }
+            // We already saved to fallback, so return true
+            if (callback) callback(true);
+          } else {
+            console.error('Storage set error:', chrome.runtime.lastError);
+            // Still return true if we saved to fallback
+            if (callback) callback(storage.fallbackSet(key, value));
+          }
           return;
         }
         if (callback) callback(true);
       });
     } catch (e) {
-      console.error('Storage set error:', e);
-      if (callback) callback(false);
+      // Check if it's an extension context error
+      if (e.message && e.message.includes('Extension context invalidated')) {
+        if (!this.contextInvalidLogged) {
+          console.warn('CreativityGuard: Cannot save to extension storage - context lost. Data saved temporarily.');
+          this.contextInvalidLogged = true;
+        }
+        // Return true if we saved to fallback
+        if (callback) callback(this.fallbackSet(key, value));
+      } else {
+        console.error('Storage set error:', e);
+        if (callback) callback(false);
+      }
     }
   }
 };
@@ -1100,16 +1290,22 @@ function showReflectionModal() {
       // Function to handle potential AI interaction
       function handleAIInteraction(event) {
         try {
+          // Check if extension context is still valid
+          if (!storage.isContextValid()) {
+            // Silently fail - extension was updated/reloaded
+            return;
+          }
+
           console.log(`AI interaction detected from ${event?.type || 'unknown'} event`);
           const chatId = getCurrentChatId();
           console.log(`Current chat ID: ${chatId}`);
-          
+
           // Skip if already shown in this session
           if (shownInChatsForSession.has(chatId)) {
             console.log(`Already shown reminder for chat in this session: ${chatId}`);
             return;
           }
-          
+
           // Check storage to see if we've shown this chat recently
           loadShownChats((shownChats) => {
             if (shownChats[chatId]) {
@@ -1283,14 +1479,17 @@ const socialMediaModule = {
     linkedinAllowedHour: 15, // 3 PM
     twitterAllowedHour: 15, // 3 PM
     facebookAllowedHour: 15, // 3 PM
+    mediaAllowedHour: 15, // 3 PM for media sites
     allowedEndHour: 19, // 7 PM - end of allowed time window
     enabledForLinkedin: true,
     enabledForTwitter: true,
     enabledForFacebook: true,
+    enabledForMedia: true, // Enable blocking for media/news sites
     totalWeekendBlock: true, // Complete block on weekends by default
     vacationModeEnabled: false, // New setting for vacation mode
     redirectUrl: 'https://read.readwise.io',
-    visits: {} // Will store dates of visits
+    visits: {}, // Will store dates of visits
+    usageHistory: [] // Track bypass and disable events with timestamps
   },
   
   // Current settings
@@ -1309,6 +1508,12 @@ const socialMediaModule = {
     // Load settings and then handle the site visit after settings are loaded
     this.storage.get((settings) => {
       try {
+        // Remove early blocker once we have settings
+        if (earlyBlockerElement && earlyBlockerElement.parentNode) {
+          console.log('%c[Creativity Guard] Removing early blocker', 'color: #0a66c2;');
+          // We'll remove it after determining if we need to show the modal
+        }
+
         console.log('%c[Creativity Guard] Loaded settings:', 'color: #0a66c2;', settings);
         
         // If no settings exist yet, initialize with defaults
@@ -1338,16 +1543,38 @@ const socialMediaModule = {
         
         console.log('%c[Creativity Guard] Current visits:', 'color: #0a66c2;', this.settings.visits);
         
-        // Now that settings are loaded, check if we're on a social media site
-        if (window.location.hostname.includes('linkedin.com')) {
+        // Now that settings are loaded, check if we're on a blocked site
+        const hostname = window.location.hostname;
+
+        // Check social media sites
+        if (hostname.includes('linkedin.com')) {
           console.log('%c[Creativity Guard] On LinkedIn, handling site visit', 'color: #0a66c2;');
           this.handleSocialMediaSite('linkedin');
-        } else if (window.location.hostname.includes('twitter.com') || window.location.hostname.includes('x.com')) {
+        } else if (hostname.includes('twitter.com') || hostname.includes('x.com')) {
           console.log('%c[Creativity Guard] On Twitter, handling site visit', 'color: #0a66c2;');
           this.handleSocialMediaSite('twitter');
-        } else if (window.location.hostname.includes('facebook.com')) {
+        } else if (hostname.includes('facebook.com')) {
           console.log('%c[Creativity Guard] On Facebook, handling site visit', 'color: #0a66c2;');
           this.handleSocialMediaSite('facebook');
+        }
+        // Check media/news sites
+        else if (hostname.includes('theguardian.com') ||
+                 hostname.includes('nytimes.com') ||
+                 hostname.includes('washingtonpost.com') ||
+                 hostname.includes('bbc.com') ||
+                 hostname.includes('cnn.com') ||
+                 hostname.includes('reddit.com')) {
+          console.log('%c[Creativity Guard] On media site, handling visit', 'color: #0a66c2;');
+          // Get specific media site name for display
+          let mediaName = 'Media';
+          if (hostname.includes('theguardian.com')) mediaName = 'The Guardian';
+          else if (hostname.includes('nytimes.com')) mediaName = 'NY Times';
+          else if (hostname.includes('washingtonpost.com')) mediaName = 'Washington Post';
+          else if (hostname.includes('bbc.com')) mediaName = 'BBC';
+          else if (hostname.includes('cnn.com')) mediaName = 'CNN';
+          else if (hostname.includes('reddit.com')) mediaName = 'Reddit';
+
+          this.handleSocialMediaSite('media', mediaName);
         }
       } catch (error) {
         console.error('%c[Creativity Guard] Error in init:', 'color: #ff0000;', error);
@@ -1388,9 +1615,10 @@ const socialMediaModule = {
   isAllowedTime: function(platform) {
     const now = new Date();
     const hour = now.getHours();
-    const allowedStartHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour : 
-                            platform === 'twitter' ? this.settings.twitterAllowedHour : 
-                            this.settings.facebookAllowedHour;
+    const allowedStartHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour :
+                            platform === 'twitter' ? this.settings.twitterAllowedHour :
+                            platform === 'facebook' ? this.settings.facebookAllowedHour :
+                            this.settings.mediaAllowedHour; // For media sites
     
     // Use configurable end hour from settings
     const allowedEndHour = this.settings.allowedEndHour || 19; // Default to 7 PM if not set
@@ -1436,23 +1664,71 @@ const socialMediaModule = {
     return day === 0 || day === 6;
   },
   
+  // Get usage stats from last 24 hours
+  getUsageStats: function() {
+    const now = Date.now();
+    const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000);
+
+    // Clean up old entries and count recent ones
+    const recentHistory = (this.settings.usageHistory || []).filter(entry =>
+      entry.timestamp > twentyFourHoursAgo
+    );
+
+    const bypassCount = recentHistory.filter(entry => entry.action === 'bypass').length;
+    const disableCount = recentHistory.filter(entry => entry.action === 'disabled').length;
+
+    return { bypassCount, disableCount };
+  },
+
+  // Record a bypass action
+  recordBypass: function() {
+    this.storage.get((currentSettings) => {
+      const settings = currentSettings || this.settings || {};
+      if (!settings.usageHistory) {
+        settings.usageHistory = [];
+      }
+
+      // Add new bypass event
+      settings.usageHistory.push({
+        timestamp: Date.now(),
+        action: 'bypass'
+      });
+
+      // Clean up entries older than 24 hours
+      const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
+      settings.usageHistory = settings.usageHistory.filter(entry =>
+        entry.timestamp > twentyFourHoursAgo
+      );
+
+      // Save updated settings
+      this.storage.set(settings, (success) => {
+        if (success) {
+          this.settings = settings;
+          console.log('Bypass recorded');
+        }
+      });
+    });
+  },
+
   // Handle social media site visit
-  handleSocialMediaSite: function(platform) {
+  handleSocialMediaSite: function(platform, displayName) {
     try {
       console.log(`%c[Creativity Guard] Handling ${platform} visit`, 'color: #0a66c2;');
-      
+
       // --- Vacation Mode Check ---
       if (this.settings.vacationModeEnabled) {
         console.log('%c[Creativity Guard] Vacation Mode is active, showing restriction modal', 'color: #ff9800;');
-        this.showSocialMediaModal(platform, true); // Pass true for isVacationMode
+        // Keep early blocker visible until modal is ready
+        this.showSocialMediaModal(platform, true, displayName); // Pass displayName
         return; // Skip further checks if vacation mode is on
       }
       // --- End Vacation Mode Check ---
 
       // Check if the feature is enabled for this platform
-      const isEnabled = platform === 'linkedin' ? this.settings.enabledForLinkedin : 
-                       platform === 'twitter' ? this.settings.enabledForTwitter : 
-                       this.settings.enabledForFacebook;
+      const isEnabled = platform === 'linkedin' ? this.settings.enabledForLinkedin :
+                       platform === 'twitter' ? this.settings.enabledForTwitter :
+                       platform === 'facebook' ? this.settings.enabledForFacebook :
+                       this.settings.enabledForMedia; // For media sites
       console.log(`%c[Creativity Guard] Feature enabled for ${platform}:`, 'color: #0a66c2;', isEnabled);
       
       if (!isEnabled) return;
@@ -1478,11 +1754,17 @@ const socialMediaModule = {
 
       if (shouldShowModal) {
         console.log('%c[Creativity Guard] Showing restriction modal (Weekend/Time/Visit)', 'color: #0a66c2;');
-        this.showSocialMediaModal(platform, false); // Pass false for isVacationMode
+        // Keep early blocker visible until modal is ready
+        this.showSocialMediaModal(platform, false, displayName); // Pass displayName for media sites
       } else {
         console.log('%c[Creativity Guard] Recording first visit', 'color: #0a66c2;');
         this.recordVisit(platform);
-        
+
+        // Remove early blocker since access is allowed
+        if (earlyBlockerElement && earlyBlockerElement.parentNode) {
+          earlyBlockerElement.remove();
+        }
+
         // Set session consent since this is allowed without prompt
         this.sessionConsent[platform] = true;
       }
@@ -1492,7 +1774,7 @@ const socialMediaModule = {
   },
   
   // Show social media restriction modal
-  showSocialMediaModal: function(platform, isVacationMode = false) { // Added isVacationMode parameter
+  showSocialMediaModal: function(platform, isVacationMode = false, displayName = null) { // Added displayName for media sites
     try {
       // Add enhanced styles to the document if they don't exist
       if (!document.getElementById('social-media-modal-styles')) {
@@ -1505,9 +1787,9 @@ const socialMediaModule = {
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0, 0, 0, 0.75);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
+            background: rgba(0, 0, 0, 1);
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
             z-index: 2147483647;
             display: flex;
             align-items: center;
@@ -1697,13 +1979,17 @@ const socialMediaModule = {
       content.className = 'content';
       
       const title = document.createElement('h2');
-      title.textContent = 'Mindful Social Media Usage';
-      
+      title.textContent = platform === 'media' ? 'Mindful Media Consumption' : 'Mindful Social Media Usage';
+
+      // Get usage statistics
+      const stats = this.getUsageStats();
+
       let messageText = '';
-      const platformName = platform.charAt(0).toUpperCase() + platform.slice(1);
-      const allowedHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour : 
-                         platform === 'twitter' ? this.settings.twitterAllowedHour : 
-                         this.settings.facebookAllowedHour;
+      const platformName = displayName || (platform.charAt(0).toUpperCase() + platform.slice(1));
+      const allowedHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour :
+                         platform === 'twitter' ? this.settings.twitterAllowedHour :
+                         platform === 'facebook' ? this.settings.facebookAllowedHour :
+                         this.settings.mediaAllowedHour;
       
       // --- Determine Message Text ---
       if (isVacationMode) {
@@ -1732,7 +2018,68 @@ const socialMediaModule = {
 
       const message = document.createElement('p');
       message.textContent = messageText;
-      
+
+      // Add usage stats if there are any
+      let statsElement = null;
+      if (stats.bypassCount > 0 || stats.disableCount > 0) {
+        statsElement = document.createElement('div');
+        statsElement.style.cssText = `
+          background: linear-gradient(135deg, #fef2f2, #fee2e2);
+          border: 2px solid #f87171;
+          border-radius: 12px;
+          padding: 16px;
+          margin: 20px 0;
+          text-align: center;
+        `;
+
+        const statsTitle = document.createElement('p');
+        statsTitle.style.cssText = `
+          font-size: 16px;
+          font-weight: 600;
+          color: #dc2626;
+          margin: 0 0 8px 0;
+        `;
+        statsTitle.textContent = '⚠️ Your activity in the last 24 hours:';
+        statsElement.appendChild(statsTitle);
+
+        if (stats.bypassCount > 0) {
+          const bypassStat = document.createElement('p');
+          bypassStat.style.cssText = `
+            font-size: 15px;
+            color: #b91c1c;
+            margin: 4px 0;
+            font-weight: 500;
+          `;
+          bypassStat.textContent = `🔄 Bypassed restrictions ${stats.bypassCount} time${stats.bypassCount > 1 ? 's' : ''}`;
+          statsElement.appendChild(bypassStat);
+        }
+
+        if (stats.disableCount > 0) {
+          const disableStat = document.createElement('p');
+          disableStat.style.cssText = `
+            font-size: 15px;
+            color: #b91c1c;
+            margin: 4px 0;
+            font-weight: 500;
+          `;
+          disableStat.textContent = `🔴 Disabled extension ${stats.disableCount} time${stats.disableCount > 1 ? 's' : ''}`;
+          statsElement.appendChild(disableStat);
+        }
+
+        // Add motivational message based on stats
+        if (stats.bypassCount > 5 || stats.disableCount > 2) {
+          const motivationMsg = document.createElement('p');
+          motivationMsg.style.cssText = `
+            font-size: 14px;
+            color: #7f1d1d;
+            margin: 8px 0 0 0;
+            font-style: italic;
+          `;
+          motivationMsg.textContent = 'Consider strengthening your commitment to focused work.';
+          statsElement.appendChild(motivationMsg);
+        }
+      }
+
       const buttons = document.createElement('div');
       buttons.className = 'buttons';
       
@@ -1754,11 +2101,18 @@ const socialMediaModule = {
         proceedButton.setAttribute('aria-label', 'Proceed to social media anyway');
         proceedButton.setAttribute('title', 'Continue to social media (Enter)');
         const proceedModalHandler = () => {
+          // Record the bypass
+          this.recordBypass();
+
           // Animate out before proceeding
           modal.style.animation = 'modalFadeOut 0.3s ease-in forwards';
           setTimeout(() => {
             this.sessionConsent[platform] = true;
             modal.remove();
+            // Also ensure early blocker is removed
+            if (earlyBlockerElement && earlyBlockerElement.parentNode) {
+              earlyBlockerElement.remove();
+            }
           }, 300);
         };
         proceedButton.addEventListener('click', proceedModalHandler);
@@ -1845,10 +2199,18 @@ const socialMediaModule = {
       
       content.appendChild(title);
       content.appendChild(message);
+      if (statsElement) {
+        content.appendChild(statsElement);
+      }
       content.appendChild(buttons);
       modal.appendChild(content);
-      
+
       document.body.appendChild(modal);
+
+      // Remove early blocker now that modal is shown
+      if (earlyBlockerElement && earlyBlockerElement.parentNode) {
+        earlyBlockerElement.remove();
+      }
       
       // Focus management for accessibility
       setTimeout(() => {
@@ -1873,12 +2235,20 @@ const socialMediaModule = {
   }
 };
 
-// Initialize social media module for relevant sites
+// Initialize social media module for relevant sites immediately
 try {
-  if (window.location.hostname.includes('linkedin.com') || 
-      window.location.hostname.includes('twitter.com') || 
-      window.location.hostname.includes('x.com') ||
-      window.location.hostname.includes('facebook.com')) {
+  const hostname = window.location.hostname;
+  if (hostname.includes('linkedin.com') ||
+      hostname.includes('twitter.com') ||
+      hostname.includes('x.com') ||
+      hostname.includes('facebook.com') ||
+      hostname.includes('theguardian.com') ||
+      hostname.includes('nytimes.com') ||
+      hostname.includes('washingtonpost.com') ||
+      hostname.includes('bbc.com') ||
+      hostname.includes('cnn.com') ||
+      hostname.includes('reddit.com')) {
+    // Initialize immediately to ensure fast blocking
     socialMediaModule.init();
   }
 } catch (e) {
