@@ -1680,7 +1680,7 @@ const socialMediaModule = {
     return { bypassCount, disableCount };
   },
 
-  // Record a bypass action
+  // Record a bypass action (legacy - without reason)
   recordBypass: function() {
     this.storage.get((currentSettings) => {
       const settings = currentSettings || this.settings || {};
@@ -1705,6 +1705,63 @@ const socialMediaModule = {
         if (success) {
           this.settings = settings;
           console.log('Bypass recorded');
+        }
+      });
+    });
+  },
+
+  // Record a bypass action with reason and context
+  recordBypassWithReason: function(platform, reason, blockType) {
+    this.storage.get((currentSettings) => {
+      const settings = currentSettings || this.settings || {};
+      if (!settings.usageHistory) {
+        settings.usageHistory = [];
+      }
+
+      // Add new enhanced bypass event
+      settings.usageHistory.push({
+        timestamp: Date.now(),
+        action: 'bypass_with_reason',
+        platform: platform,
+        reason: reason,
+        blockType: blockType,
+        countdownCompleted: true
+      });
+
+      // Also keep a separate detailed bypass log for better analytics
+      if (!settings.bypassReasons) {
+        settings.bypassReasons = [];
+      }
+
+      settings.bypassReasons.push({
+        timestamp: Date.now(),
+        date: new Date().toISOString(),
+        platform: platform,
+        reason: reason,
+        blockType: blockType
+      });
+
+      // Keep only last 30 days of bypass reasons
+      const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+      settings.bypassReasons = settings.bypassReasons.filter(entry =>
+        entry.timestamp > thirtyDaysAgo
+      );
+
+      // Clean up usage history entries older than 24 hours (for stats display)
+      const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
+      settings.usageHistory = settings.usageHistory.filter(entry =>
+        entry.timestamp > twentyFourHoursAgo
+      );
+
+      // Save updated settings
+      this.storage.set(settings, (success) => {
+        if (success) {
+          this.settings = settings;
+          console.log('Bypass with reason recorded:', {
+            platform,
+            blockType,
+            reasonLength: reason.length
+          });
         }
       });
     });
@@ -2082,43 +2139,368 @@ const socialMediaModule = {
 
       const buttons = document.createElement('div');
       buttons.className = 'buttons';
-      
-      // --- Determine Buttons ---
-      // Conditions for showing the "Proceed Anyway" button:
-      // 1. Vacation Mode must be OFF.
-      // 2. It must NOT be a weekend where totalWeekendBlock is enabled.
-      // 3. It must NOT be a weekday outside the allowed time window (hard block).
-      const isWeekendDayForButton = this.isWeekend();
-      const isTotalWeekendBlockForButton = isWeekendDayForButton && (this.settings.totalWeekendBlock !== undefined ? this.settings.totalWeekendBlock : true);
-      const isWeekdayHardBlock = !isWeekendDayForButton && !this.isAllowedTime(platform);
-      const allowProceed = !isVacationMode && !isTotalWeekendBlockForButton && !isWeekdayHardBlock;
 
-      let proceedButton = null;
-      if (allowProceed) {
-        proceedButton = document.createElement('button');
-        proceedButton.id = 'proceed';
-        proceedButton.textContent = 'Proceed Anyway';
-        proceedButton.setAttribute('aria-label', 'Proceed to social media anyway');
-        proceedButton.setAttribute('title', 'Continue to social media (Enter)');
-        const proceedModalHandler = () => {
-          // Record the bypass
-          this.recordBypass();
+      // --- Always show bypass option with accountability flow ---
+      // Helper function to determine block type for logging
+      const getBlockType = () => {
+        if (isVacationMode) return 'vacation';
+        const isWeekendDay = this.isWeekend();
+        const isTotalWeekendBlock = isWeekendDay && (this.settings.totalWeekendBlock !== undefined ? this.settings.totalWeekendBlock : true);
+        if (isTotalWeekendBlock) return 'weekend';
+        if (!this.isAllowedTime(platform)) return 'outside_hours';
+        if (this.hasVisitedToday(platform)) return 'already_visited';
+        return 'unknown';
+      };
 
-          // Animate out before proceeding
-          modal.style.animation = 'modalFadeOut 0.3s ease-in forwards';
-          setTimeout(() => {
-            this.sessionConsent[platform] = true;
-            modal.remove();
-            // Also ensure early blocker is removed
-            if (earlyBlockerElement && earlyBlockerElement.parentNode) {
-              earlyBlockerElement.remove();
-            }
-          }, 300);
+      const blockType = getBlockType();
+
+      // Helper function to validate reason
+      const validateReason = (reason) => {
+        if (!reason || typeof reason !== 'string') return false;
+        const trimmed = reason.trim();
+        if (trimmed.length < 10) return false;
+        // Check for low-effort responses
+        const lowEffort = ['asdf', 'test test', '..........', 'aaaaaaaaaa', '1234567890', 'qqqqqqqqqq'];
+        if (lowEffort.some(pattern => trimmed.toLowerCase().includes(pattern))) {
+          return false;
+        }
+        return true;
+      };
+
+      // Helper function to show reason input step
+      const showReasonInput = (onValidReason, onCancel) => {
+        // Update modal content for reason input
+        content.innerHTML = ''; // Clear existing content
+
+        const reasonTitle = document.createElement('h2');
+        reasonTitle.textContent = 'Why do you need to bypass?';
+        reasonTitle.style.marginBottom = '20px';
+
+        const reasonDescription = document.createElement('p');
+        reasonDescription.textContent = 'Please explain why you need access right now:';
+        reasonDescription.style.marginBottom = '12px';
+        reasonDescription.style.fontSize = '15px';
+        reasonDescription.style.color = '#4b5563';
+
+        const reasonInput = document.createElement('textarea');
+        reasonInput.placeholder = 'Enter your reason (minimum 10 characters)...';
+        reasonInput.style.cssText = `
+          width: 100%;
+          min-height: 80px;
+          padding: 12px;
+          border: 2px solid #e5e7eb;
+          border-radius: 8px;
+          font-size: 14px;
+          font-family: inherit;
+          resize: vertical;
+          transition: border-color 0.2s;
+        `;
+        reasonInput.setAttribute('maxlength', '500');
+
+        const charCount = document.createElement('div');
+        charCount.style.cssText = `
+          text-align: right;
+          font-size: 12px;
+          color: #9ca3af;
+          margin-top: 4px;
+          margin-bottom: 20px;
+        `;
+        charCount.textContent = '0 / 10 characters minimum';
+
+        const reasonButtons = document.createElement('div');
+        reasonButtons.className = 'buttons';
+
+        const startCountdownBtn = document.createElement('button');
+        startCountdownBtn.textContent = 'Start Countdown';
+        startCountdownBtn.disabled = true;
+        startCountdownBtn.style.cssText = `
+          padding: 14px 28px;
+          border: none;
+          border-radius: 12px;
+          font-size: 16px;
+          font-weight: 600;
+          cursor: not-allowed;
+          background: #e5e7eb;
+          color: #9ca3af;
+          transition: all 0.2s ease;
+          min-width: 160px;
+        `;
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.style.cssText = `
+          padding: 14px 28px;
+          border: none;
+          border-radius: 12px;
+          font-size: 16px;
+          font-weight: 600;
+          cursor: pointer;
+          background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
+          color: #374151;
+          border: 2px solid #d1d5db;
+          transition: all 0.2s ease;
+          min-width: 160px;
+        `;
+
+        // Update button state based on input
+        reasonInput.addEventListener('input', (e) => {
+          const value = e.target.value;
+          const charLength = value.trim().length;
+          const isValid = validateReason(value);
+
+          // Update character count
+          charCount.textContent = `${charLength} / 10 characters minimum`;
+          charCount.style.color = charLength >= 10 ? '#10b981' : '#9ca3af';
+
+          // Update input border
+          if (value.length > 0) {
+            reasonInput.style.borderColor = isValid ? '#10b981' : '#ef4444';
+          } else {
+            reasonInput.style.borderColor = '#e5e7eb';
+          }
+
+          // Update button state
+          startCountdownBtn.disabled = !isValid;
+          if (isValid) {
+            startCountdownBtn.style.cssText = `
+              padding: 14px 28px;
+              border: none;
+              border-radius: 12px;
+              font-size: 16px;
+              font-weight: 600;
+              cursor: pointer;
+              background: linear-gradient(135deg, #f59e0b, #d97706);
+              color: white;
+              transition: all 0.2s ease;
+              min-width: 160px;
+            `;
+          } else {
+            startCountdownBtn.style.cssText = `
+              padding: 14px 28px;
+              border: none;
+              border-radius: 12px;
+              font-size: 16px;
+              font-weight: 600;
+              cursor: not-allowed;
+              background: #e5e7eb;
+              color: #9ca3af;
+              transition: all 0.2s ease;
+              min-width: 160px;
+            `;
+          }
+        });
+
+        startCountdownBtn.addEventListener('click', () => {
+          const reason = reasonInput.value.trim();
+          if (validateReason(reason)) {
+            onValidReason(reason);
+          }
+        });
+
+        cancelBtn.addEventListener('click', onCancel);
+
+        reasonButtons.appendChild(startCountdownBtn);
+        reasonButtons.appendChild(cancelBtn);
+
+        content.appendChild(reasonTitle);
+        content.appendChild(reasonDescription);
+        content.appendChild(reasonInput);
+        content.appendChild(charCount);
+        content.appendChild(reasonButtons);
+
+        // Focus on input
+        setTimeout(() => reasonInput.focus(), 100);
+      };
+
+      // Helper function to show countdown
+      const showCountdown = (reason, onComplete, onAbort) => {
+        let timeLeft = 20;
+        let countdownInterval;
+
+        const updateCountdownDisplay = () => {
+          content.innerHTML = ''; // Clear existing content
+
+          const countdownTitle = document.createElement('h2');
+          countdownTitle.textContent = 'Please wait...';
+          countdownTitle.style.marginBottom = '20px';
+
+          const timerDisplay = document.createElement('div');
+          timerDisplay.style.cssText = `
+            font-size: 48px;
+            font-weight: bold;
+            color: ${timeLeft <= 5 ? '#ef4444' : '#f59e0b'};
+            margin: 20px 0;
+            font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+          `;
+          timerDisplay.textContent = timeLeft;
+
+          const reasonDisplay = document.createElement('div');
+          reasonDisplay.style.cssText = `
+            background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
+            padding: 16px;
+            border-radius: 12px;
+            margin: 20px 0;
+            border-left: 4px solid #f59e0b;
+          `;
+
+          const reasonLabel = document.createElement('p');
+          reasonLabel.textContent = 'Your reason:';
+          reasonLabel.style.cssText = `
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 8px;
+            font-size: 14px;
+          `;
+
+          const reasonText = document.createElement('p');
+          reasonText.textContent = reason;
+          reasonText.style.cssText = `
+            color: #4b5563;
+            font-style: italic;
+            font-size: 15px;
+            line-height: 1.5;
+          `;
+
+          reasonDisplay.appendChild(reasonLabel);
+          reasonDisplay.appendChild(reasonText);
+
+          const messageText = document.createElement('p');
+          messageText.textContent = 'Take this moment to reconsider if you really need access now.';
+          messageText.style.cssText = `
+            color: #6b7280;
+            font-size: 15px;
+            margin: 20px 0;
+          `;
+
+          const abortBtn = document.createElement('button');
+          abortBtn.textContent = 'Abort Bypass';
+          abortBtn.style.cssText = `
+            padding: 14px 28px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+            transition: all 0.2s ease;
+            min-width: 200px;
+            box-shadow: 0 4px 14px rgba(239, 68, 68, 0.3);
+          `;
+
+          abortBtn.addEventListener('click', () => {
+            clearInterval(countdownInterval);
+            onAbort();
+          });
+
+          abortBtn.addEventListener('mouseenter', () => {
+            abortBtn.style.transform = 'translateY(-2px)';
+            abortBtn.style.boxShadow = '0 6px 20px rgba(239, 68, 68, 0.4)';
+          });
+
+          abortBtn.addEventListener('mouseleave', () => {
+            abortBtn.style.transform = 'translateY(0)';
+            abortBtn.style.boxShadow = '0 4px 14px rgba(239, 68, 68, 0.3)';
+          });
+
+          content.appendChild(countdownTitle);
+          content.appendChild(timerDisplay);
+          content.appendChild(reasonDisplay);
+          content.appendChild(messageText);
+          content.appendChild(abortBtn);
         };
-        proceedButton.addEventListener('click', proceedModalHandler);
-        CreativityGuardCleanup.trackEventListener(proceedButton, 'click', proceedModalHandler);
-        buttons.appendChild(proceedButton);
-      }
+
+        // Initial display
+        updateCountdownDisplay();
+
+        // Start countdown
+        countdownInterval = CreativityGuardCleanup.trackInterval(setInterval(() => {
+          timeLeft--;
+          if (timeLeft <= 0) {
+            clearInterval(countdownInterval);
+            onComplete();
+          } else {
+            updateCountdownDisplay();
+          }
+        }, 1000));
+      };
+
+      // Create bypass button (always shown now)
+      const bypassButton = document.createElement('button');
+      bypassButton.id = 'bypass';
+      bypassButton.textContent = 'Bypass Blockade';
+      bypassButton.setAttribute('aria-label', 'Bypass the blockade with accountability');
+      bypassButton.setAttribute('title', 'Provide a reason to bypass (Enter)');
+      bypassButton.style.cssText = `
+        padding: 14px 28px;
+        border: none;
+        border-radius: 12px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+        color: white;
+        transition: all 0.2s ease;
+        min-width: 160px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        box-shadow: 0 4px 14px rgba(245, 158, 11, 0.3);
+      `;
+
+      const bypassModalHandler = () => {
+        // Show reason input
+        showReasonInput(
+          (reason) => {
+            // Show countdown
+            showCountdown(
+              reason,
+              () => {
+                // Countdown completed - record and proceed
+                this.recordBypassWithReason(platform, reason, blockType);
+
+                // Animate out before proceeding
+                modal.style.animation = 'modalFadeOut 0.3s ease-in forwards';
+                setTimeout(() => {
+                  this.sessionConsent[platform] = true;
+                  modal.remove();
+                  // Also ensure early blocker is removed
+                  if (earlyBlockerElement && earlyBlockerElement.parentNode) {
+                    earlyBlockerElement.remove();
+                  }
+                }, 300);
+              },
+              () => {
+                // User aborted - go back to initial state
+                content.innerHTML = '';
+                content.appendChild(title);
+                content.appendChild(message);
+                if (statsElement) {
+                  content.appendChild(statsElement);
+                }
+                content.appendChild(buttons);
+                bypassButton.focus();
+              }
+            );
+          },
+          () => {
+            // User cancelled - go back to initial state
+            content.innerHTML = '';
+            content.appendChild(title);
+            content.appendChild(message);
+            if (statsElement) {
+              content.appendChild(statsElement);
+            }
+            content.appendChild(buttons);
+            bypassButton.focus();
+          }
+        );
+      };
+
+      bypassButton.addEventListener('click', bypassModalHandler);
+      CreativityGuardCleanup.trackEventListener(bypassButton, 'click', bypassModalHandler);
+      buttons.appendChild(bypassButton);
       
       const skipButton = document.createElement('button');
       skipButton.id = 'skip';

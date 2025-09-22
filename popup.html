@@ -569,7 +569,7 @@
       
       <div class="setting-card">
         <h2 class="settings-title">Redirect Settings</h2>
-        
+
         <div class="setting-item">
           <label for="redirectUrl" class="setting-label">Redirect URL:</label>
           <input type="text" id="redirectUrl" placeholder="https://read.readwise.io" aria-describedby="redirectUrl-error redirectUrl-help">
@@ -577,7 +577,35 @@
           <div class="helper-text" id="redirectUrl-help">URL where you'll be redirected when blocked from social media</div>
         </div>
       </div>
-      
+
+      <div class="setting-card">
+        <h2 class="settings-title">Bypass Statistics (Last 24 Hours)</h2>
+
+        <div class="stats-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+          <div class="stat-item" style="background: linear-gradient(135deg, #fef2f2, #fee2e2); padding: 12px; border-radius: 8px;">
+            <div class="stat-label" style="font-size: 12px; color: #991b1b; margin-bottom: 4px;">Total Bypasses</div>
+            <div class="stat-value" id="total-bypasses" style="font-size: 24px; font-weight: bold; color: #dc2626;">0</div>
+          </div>
+          <div class="stat-item" style="background: linear-gradient(135deg, #fef3c7, #fed7aa); padding: 12px; border-radius: 8px;">
+            <div class="stat-label" style="font-size: 12px; color: #92400e; margin-bottom: 4px;">With Reasons</div>
+            <div class="stat-value" id="bypass-with-reasons" style="font-size: 24px; font-weight: bold; color: #d97706;">0</div>
+          </div>
+        </div>
+
+        <div id="bypass-reasons-section" style="display: none;">
+          <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 10px; color: #374151;">Recent Bypass Reasons:</h3>
+          <div id="recent-bypass-reasons" style="max-height: 150px; overflow-y: auto; background: #f9fafb; padding: 10px; border-radius: 8px;">
+            <!-- Reasons will be populated here -->
+          </div>
+        </div>
+
+        <div id="bypass-warning" style="display: none; margin-top: 15px; padding: 12px; background: linear-gradient(135deg, #fef2f2, #fee2e2); border: 2px solid #f87171; border-radius: 8px;">
+          <p style="margin: 0; color: #b91c1c; font-weight: 600; font-size: 14px;">
+            ⚠️ High bypass frequency detected. Consider adjusting your time windows or strengthening your commitment.
+          </p>
+        </div>
+      </div>
+
       <button class="reset-button" id="reset-social-visits" tabindex="0" role="button" aria-label="Reset today's social media visits">
         <span class="hidden spinner" id="visits-spinner"></span>
         Reset Today's Visits

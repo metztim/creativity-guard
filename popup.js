@@ -290,6 +290,9 @@ document.addEventListener('DOMContentLoaded', function() {
   // Load social media settings
   loadSocialMediaSettings();
 
+  // Load bypass statistics
+  loadBypassStatistics();
+
   // Load extension tracking stats
   loadExtensionTrackingStats();
 
@@ -316,6 +319,11 @@ function setupTabs() {
       this.classList.add('active');
       const tabId = this.getAttribute('data-tab');
       document.getElementById(tabId).classList.add('active');
+
+      // Reload statistics when switching to social media tab
+      if (tabId === 'social-media') {
+        loadBypassStatistics();
+      }
     };
     
     button.addEventListener('click', clickHandler);
@@ -466,6 +474,136 @@ function loadAIStats() {
   });
 }
 
+// Load and display bypass statistics
+function loadBypassStatistics() {
+  SafeChromeAPI.runtime.sendMessage({ type: 'GET_SOCIAL_MEDIA_SETTINGS' }, (settings) => {
+    if (!settings || !settings.usageHistory) {
+      // No bypass data yet
+      updateBypassDisplay(0, 0, []);
+      return;
+    }
+
+    try {
+      const now = Date.now();
+      const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000);
+
+      // Filter for bypass events in the last 24 hours
+      const recentBypasses = settings.usageHistory.filter(entry =>
+        entry.timestamp > twentyFourHoursAgo &&
+        (entry.action === 'bypass' || entry.action === 'bypass_with_reason')
+      );
+
+      const totalBypasses = recentBypasses.length;
+      const bypassesWithReasons = recentBypasses.filter(entry =>
+        entry.action === 'bypass_with_reason' && entry.reason
+      ).length;
+
+      // Get recent bypass reasons
+      const recentReasons = [];
+      if (settings.bypassReasons) {
+        const recentReasonEntries = settings.bypassReasons.filter(entry =>
+          entry.timestamp > twentyFourHoursAgo
+        ).sort((a, b) => b.timestamp - a.timestamp).slice(0, 5); // Show last 5 reasons
+
+        recentReasonEntries.forEach(entry => {
+          const timeAgo = Math.floor((now - entry.timestamp) / 60000); // minutes ago
+          let timeStr = '';
+          if (timeAgo < 60) {
+            timeStr = `${timeAgo}m ago`;
+          } else {
+            const hoursAgo = Math.floor(timeAgo / 60);
+            timeStr = `${hoursAgo}h ago`;
+          }
+
+          recentReasons.push({
+            platform: entry.platform,
+            reason: entry.reason,
+            blockType: entry.blockType,
+            timeAgo: timeStr
+          });
+        });
+      }
+
+      updateBypassDisplay(totalBypasses, bypassesWithReasons, recentReasons);
+
+    } catch (error) {
+      console.error('Error processing bypass statistics:', error);
+      updateBypassDisplay(0, 0, []);
+    }
+  });
+}
+
+// Update bypass statistics display
+function updateBypassDisplay(total, withReasons, recentReasons) {
+  // Update counters
+  const totalElement = document.getElementById('total-bypasses');
+  const withReasonsElement = document.getElementById('bypass-with-reasons');
+
+  if (totalElement) totalElement.textContent = total;
+  if (withReasonsElement) withReasonsElement.textContent = withReasons;
+
+  // Show/hide warning based on frequency
+  const warningElement = document.getElementById('bypass-warning');
+  if (warningElement) {
+    if (total > 5) {
+      warningElement.style.display = 'block';
+    } else {
+      warningElement.style.display = 'none';
+    }
+  }
+
+  // Update recent reasons section
+  const reasonsSection = document.getElementById('bypass-reasons-section');
+  const reasonsContainer = document.getElementById('recent-bypass-reasons');
+
+  if (recentReasons.length > 0 && reasonsSection && reasonsContainer) {
+    reasonsSection.style.display = 'block';
+    reasonsContainer.innerHTML = '';
+
+    recentReasons.forEach(item => {
+      const reasonItem = document.createElement('div');
+      reasonItem.style.cssText = `
+        margin-bottom: 10px;
+        padding: 8px;
+        background: white;
+        border-left: 3px solid #f59e0b;
+        border-radius: 4px;
+      `;
+
+      const header = document.createElement('div');
+      header.style.cssText = `
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 4px;
+        font-size: 11px;
+        color: #6b7280;
+      `;
+
+      const platformText = item.platform.charAt(0).toUpperCase() + item.platform.slice(1);
+      const blockTypeText = item.blockType.replace('_', ' ');
+      header.innerHTML = `
+        <span><strong>${platformText}</strong> • ${blockTypeText}</span>
+        <span>${item.timeAgo}</span>
+      `;
+
+      const reasonText = document.createElement('div');
+      reasonText.style.cssText = `
+        font-size: 13px;
+        color: #374151;
+        font-style: italic;
+        line-height: 1.4;
+      `;
+      reasonText.textContent = `"${item.reason}"`;
+
+      reasonItem.appendChild(header);
+      reasonItem.appendChild(reasonText);
+      reasonsContainer.appendChild(reasonItem);
+    });
+  } else if (reasonsSection) {
+    reasonsSection.style.display = 'none';
+  }
+}
+
 // Load social media settings with enhanced error handling
 function loadSocialMediaSettings() {
   SafeChromeAPI.runtime.sendMessage({ type: 'GET_SOCIAL_MEDIA_SETTINGS' }, (settings) => {
@@ -473,7 +611,7 @@ function loadSocialMediaSettings() {
       // Use defaults if no settings returned
       settings = {};
     }
-    
+
     try {
       // Set default values if they don't exist
       const defaults = {
