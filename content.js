@@ -2539,19 +2539,22 @@ const socialMediaModule = {
             skipModalHandler();
             break;
           case 'Enter':
-            if (document.activeElement === proceedButton) {
+            if (document.activeElement === bypassButton) {
               e.preventDefault();
-              proceedButton.click();
+              bypassButton.click();
+            } else if (document.activeElement === skipButton) {
+              e.preventDefault();
+              skipButton.click();
             } else {
               e.preventDefault();
-              skipModalHandler();
+              bypassButton.click(); // Default to bypass button
             }
             break;
           case 'Tab':
             // Focus management for modal
-            const focusableElements = proceedButton ? [proceedButton, skipButton] : [skipButton];
+            const focusableElements = [bypassButton, skipButton];
             const currentIndex = focusableElements.indexOf(document.activeElement);
-            
+
             if (e.shiftKey && currentIndex === 0) {
               e.preventDefault();
               focusableElements[focusableElements.length - 1].focus();
@@ -2596,12 +2599,9 @@ const socialMediaModule = {
       
       // Focus management for accessibility
       setTimeout(() => {
-        if (proceedButton) {
-          proceedButton.focus();
-        } else {
-          skipButton.focus();
-        }
-        
+        // Focus on bypass button by default
+        bypassButton.focus();
+
         // Announce to screen readers
         const announcement = document.createElement('div');
         announcement.setAttribute('aria-live', 'assertive');
