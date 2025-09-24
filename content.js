@@ -1499,12 +1499,43 @@ const socialMediaModule = {
   sessionConsent: {
     linkedin: false,
     twitter: false,
-    facebook: false
+    facebook: false,
+    media: false
+  },
+
+  // Initialize session consent from sessionStorage
+  initSessionConsent: function() {
+    // Try to restore session consent from sessionStorage
+    try {
+      const storedConsent = sessionStorage.getItem('creativityGuardSessionConsent');
+      if (storedConsent) {
+        const parsed = JSON.parse(storedConsent);
+        // Merge with default values to handle new platforms
+        this.sessionConsent = { ...this.sessionConsent, ...parsed };
+        console.log('%c[Creativity Guard] Restored session consent:', 'color: #0a66c2;', this.sessionConsent);
+      }
+    } catch (e) {
+      console.error('Error restoring session consent:', e);
+    }
+  },
+
+  // Save session consent to sessionStorage
+  saveSessionConsent: function() {
+    try {
+      sessionStorage.setItem('creativityGuardSessionConsent', JSON.stringify(this.sessionConsent));
+      console.log('%c[Creativity Guard] Saved session consent:', 'color: #0a66c2;', this.sessionConsent);
+    } catch (e) {
+      console.error('Error saving session consent:', e);
+    }
   },
   
   // Initialize the module
   init: function() {
     console.log('%c[Creativity Guard] Social media module initializing...', 'color: #0a66c2; font-weight: bold;');
+
+    // Initialize session consent from sessionStorage
+    this.initSessionConsent();
+
     // Load settings and then handle the site visit after settings are loaded
     this.storage.get((settings) => {
       try {
@@ -1824,6 +1855,7 @@ const socialMediaModule = {
 
         // Set session consent since this is allowed without prompt
         this.sessionConsent[platform] = true;
+        this.saveSessionConsent(); // Save to sessionStorage
       }
     } catch (error) {
       console.error('%c[Creativity Guard] Error handling site visit:', 'color: #ff0000;', error);
@@ -2464,6 +2496,7 @@ const socialMediaModule = {
                 modal.style.animation = 'modalFadeOut 0.3s ease-in forwards';
                 setTimeout(() => {
                   this.sessionConsent[platform] = true;
+                  this.saveSessionConsent(); // Save to sessionStorage
                   modal.remove();
                   // Also ensure early blocker is removed
                   if (earlyBlockerElement && earlyBlockerElement.parentNode) {
@@ -2596,11 +2629,13 @@ const socialMediaModule = {
       if (earlyBlockerElement && earlyBlockerElement.parentNode) {
         earlyBlockerElement.remove();
       }
-      
+
       // Focus management for accessibility
       setTimeout(() => {
         // Focus on bypass button by default
-        bypassButton.focus();
+        if (bypassButton) {
+          bypassButton.focus();
+        }
 
         // Announce to screen readers
         const announcement = document.createElement('div');
