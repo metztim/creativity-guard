@@ -2976,28 +2976,27 @@ const socialMediaModule = {
       skipButton.setAttribute('title', 'Redirect to reading material (Escape)');
       const skipModalHandler = () => {
         try {
-          // Animate out before redirecting
-          modal.style.animation = 'modalFadeOut 0.3s ease-in forwards';
-          setTimeout(() => {
-            modal.remove();
-            // Try to get redirect URL from sites.json first, then fallback to legacy settings
-            let redirectUrl = 'https://weeatrobots.substack.com'; // Default
-            if (sitesConfig && sitesConfig.settings && sitesConfig.settings.redirectUrl) {
-              redirectUrl = sitesConfig.settings.redirectUrl;
-            } else if (this.settings.redirectUrl) {
-              redirectUrl = this.settings.redirectUrl;
-            }
+          // Immediately redirect without animation to prevent glimpse of blocked site
+          // Try to get redirect URL from sites.json first, then fallback to legacy settings
+          let redirectUrl = 'https://weeatrobots.substack.com'; // Default
+          if (sitesConfig && sitesConfig.settings && sitesConfig.settings.redirectUrl) {
+            redirectUrl = sitesConfig.settings.redirectUrl;
+          } else if (this.settings.redirectUrl) {
+            redirectUrl = this.settings.redirectUrl;
+          }
 
-            const validatedUrl = validateAndSanitizeUrl(redirectUrl);
-            
-            // Additional safety check before redirecting
-            if (validatedUrl && typeof validatedUrl === 'string' && validatedUrl.startsWith('http')) {
-              window.location.href = validatedUrl;
-            } else {
-              console.error('Invalid redirect URL after validation:', validatedUrl);
-              window.location.href = 'https://weeatrobots.substack.com'; // Fallback
-            }
-          }, 300);
+          const validatedUrl = validateAndSanitizeUrl(redirectUrl);
+
+          // Additional safety check before redirecting
+          if (validatedUrl && typeof validatedUrl === 'string' && validatedUrl.startsWith('http')) {
+            window.location.href = validatedUrl;
+          } else {
+            console.error('Invalid redirect URL after validation:', validatedUrl);
+            window.location.href = 'https://weeatrobots.substack.com'; // Fallback
+          }
+
+          // Remove modal after redirect is initiated (won't be seen)
+          modal.remove();
         } catch (error) {
           console.error('Error during redirect:', error);
           window.location.href = 'https://weeatrobots.substack.com'; // Safe fallback
