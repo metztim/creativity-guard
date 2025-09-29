@@ -226,8 +226,9 @@ const CreativityGuardCleanup = {
 };
 
 // Set up global cleanup handlers
+// Note: 'unload' event is deprecated and causes permissions policy violations
+// Using 'beforeunload' and 'pagehide' for cleanup instead
 window.addEventListener('beforeunload', () => CreativityGuardCleanup.cleanup());
-window.addEventListener('unload', () => CreativityGuardCleanup.cleanup());
 window.addEventListener('pagehide', () => CreativityGuardCleanup.cleanup());
 
 // Make cleanup accessible globally for debugging
