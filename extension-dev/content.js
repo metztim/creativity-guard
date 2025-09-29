@@ -1182,8 +1182,10 @@ function showReflectionModal() {
       announcement.style.position = 'absolute';
       announcement.style.left = '-10000px';
       announcement.textContent = 'Creativity reminder appeared. Please consider thinking first before using AI.';
-      document.body.appendChild(announcement);
-      setTimeout(() => announcement.remove(), 2000);
+      if (document.body) {
+        document.body.appendChild(announcement);
+        setTimeout(() => announcement.remove(), 2000);
+      }
     }, 100);
     
     // Increment AI usage attempt counter
@@ -3062,9 +3064,27 @@ const socialMediaModule = {
       content.appendChild(buttons);
       modal.appendChild(content);
 
-      document.body.appendChild(modal);
+      // Ensure body exists before appending
+      if (document.body) {
+        document.body.appendChild(modal);
+      } else {
+        // Wait for body to be ready
+        const appendModal = () => {
+          if (document.body) {
+            document.body.appendChild(modal);
+          } else {
+            setTimeout(appendModal, 10);
+          }
+        };
+        appendModal();
+      }
 
       // Remove early blocker now that modal is shown
+      const blocker = document.getElementById('creativity-guard-early-blocker');
+      if (blocker) {
+        blocker.remove();
+      }
+      // Also try the element reference
       if (earlyBlockerElement && earlyBlockerElement.parentNode) {
         earlyBlockerElement.remove();
       }
@@ -3082,8 +3102,10 @@ const socialMediaModule = {
         announcement.style.position = 'absolute';
         announcement.style.left = '-10000px';
         announcement.textContent = `Social media restriction modal appeared. ${messageText}`;
-        document.body.appendChild(announcement);
-        setTimeout(() => announcement.remove(), 3000);
+        if (document.body) {
+          document.body.appendChild(announcement);
+          setTimeout(() => announcement.remove(), 3000);
+        }
       }, 100);
     } catch (e) {
       console.error('Error showing social media modal:', e);
