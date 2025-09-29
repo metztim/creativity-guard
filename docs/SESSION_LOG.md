@@ -336,3 +336,112 @@ Fixed the undefined reference error in the social media modal and implemented pr
 - Files created: 0
 - Lines modified: ~50 (session tracking implementation + safety check)
 - Bug fixes: 2 (undefined reference error, improper session tracking)
+
+---
+
+## Session Log: 2025-09-25
+
+**Project**: creativity-guard
+**Duration**: ~15 minutes
+**Type**: [feature]
+
+### Objectives
+- Center-align the "Abort Bypass" button during countdown phase
+- Add persistent reason display after bypass to keep users mindful of why they're visiting blocked sites
+
+### Summary
+Implemented two UX improvements for the social media blocking feature: centered the abort button during countdown for better visual balance, and added a persistent top bar that displays the bypass reason throughout the browsing session to maintain accountability awareness.
+
+### Files Changed
+- `content.js` - Added button centering wrapper, implemented persistent reason bar functionality
+
+### Technical Notes
+- **Button Centering**: Wrapped abort button in flexbox container with `justify-content: center` for proper alignment during countdown
+- **Persistent Reason Bar**: Created fixed-position top bar (48px height) with slide animations, displays platform name and bypass reason
+- **Design Decision**: Chose top bar over corner widget for better visibility and consistency across sites
+- **Body Padding**: Added dynamic padding-top to prevent content overlap when bar is shown
+- **Cleanup**: Bar is automatically removed on navigation via CreativityGuardCleanup tracking
+
+### Implementation Details
+
+#### Reason Bar Features
+- **Position**: Fixed at top of viewport, full width
+- **Styling**: Amber/yellow gradient background matching the warning theme
+- **Content**: Warning icon, platform name, user's bypass reason (truncated with ellipsis)
+- **Interaction**: Close button with hover effects, smooth slide animations
+- **Integration**: Called after countdown completion, persists until manually closed
+
+### Future Plans & Unimplemented Phases
+**None** - Both requested features were fully implemented in this session
+
+### Next Actions
+- [ ] Test the centered button layout on different screen sizes
+- [ ] Verify reason bar displays correctly across all supported social media platforms
+- [ ] Consider adding persistence option (save reason bar state across page navigations)
+- [ ] Test interaction with sites that have their own fixed headers
+- [ ] Monitor z-index conflicts with site-specific elements
+
+### Metrics
+- Files modified: 1
+- Files created: 0
+- Lines added: ~165 (showReasonBar function + button wrapper)
+- Features added: 2 (button centering, persistent reason bar)
+
+---
+
+## Session Log: 2025-09-25 (Update)
+
+**Project**: creativity-guard
+**Duration**: ~10 minutes
+**Type**: [feature]
+
+### Objectives
+- Move bypass reason banner from top to bottom to avoid blocking essential UI navigation
+- Add usage timer to show how long user has been on the blocked site
+- Make banner less intrusive while maintaining accountability
+
+### Summary
+Successfully improved the bypass reason banner UX by repositioning it to the bottom of the screen and adding a live usage timer. The banner now avoids blocking critical navigation elements at the top of websites while still maintaining visibility and accountability features.
+
+### Files Changed
+- `content.js` - Repositioned banner to bottom, added usage timer, improved styling and animations
+
+### Technical Notes
+- **Position Change**: Moved from `top: 0` to `bottom: 0` with corresponding animation updates
+- **Timer Implementation**: Added live MM:SS format timer that updates every second
+- **Visual Improvements**: Made background slightly transparent (0.98 opacity) and lowered z-index to be less intrusive
+- **Animation Updates**: Changed from slideDown/slideUp to slideUp (from bottom) and slideDown (to bottom)
+- **Cleanup Enhancement**: Added proper interval cleanup on element removal to prevent memory leaks
+
+### Implementation Details
+
+#### Banner Improvements
+1. **Bottom Positioning**: Fixed at bottom with 56px height, border-top instead of border-bottom
+2. **Usage Timer**:
+   - Updates every second showing time spent on site
+   - Styled with background bubble for better visibility
+   - Properly cleans up interval on close or navigation
+3. **Content Padding**: Changed from padding-top to padding-bottom to push content up
+4. **Z-index Reduction**: Lowered from maximum to allow critical overlays to appear above
+
+#### Timer Features
+- Format: MM:SS with zero-padding for seconds
+- Styling: Amber background with rounded corners
+- Position: Between reason text and close button
+- Cleanup: Interval cleared on close button click or element removal
+
+### Future Plans & Unimplemented Phases
+**None** - All requested improvements were successfully implemented
+
+### Next Actions
+- [ ] Test banner on various sites to ensure it doesn't interfere with bottom navigation bars
+- [ ] Verify timer continues accurately during long sessions
+- [ ] Consider adding option to toggle between top/bottom position in settings
+- [ ] Monitor performance impact of timer updates every second
+- [ ] Test on mobile viewports where bottom space is more critical
+
+### Metrics
+- Files modified: 1
+- Files created: 0
+- Lines modified: ~80 (banner repositioning + timer implementation)
+- Features added: 2 (bottom positioning, usage timer)

@@ -1862,6 +1862,203 @@ const socialMediaModule = {
     }
   },
   
+  // Show persistent reason bar at top of page
+  showReasonBar: function(reason, platform) {
+    try {
+      // Remove any existing reason bar
+      const existingBar = document.getElementById('creativity-guard-reason-bar');
+      if (existingBar) {
+        existingBar.remove();
+      }
+
+      // Remove any existing body padding
+      document.body.style.removeProperty('padding-top');
+
+      // Create the reason bar
+      const reasonBar = document.createElement('div');
+      reasonBar.id = 'creativity-guard-reason-bar';
+      reasonBar.style.cssText = `
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 56px;
+        background: linear-gradient(135deg, rgba(254, 243, 199, 0.98), rgba(254, 215, 170, 0.98));
+        border-top: 2px solid #f59e0b;
+        box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+        z-index: 2147483646;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 20px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        animation: slideUp 0.3s ease-out;
+      `;
+
+      // Add animation keyframes if not already added
+      if (!document.getElementById('creativity-guard-reason-bar-styles')) {
+        const styleSheet = document.createElement('style');
+        styleSheet.id = 'creativity-guard-reason-bar-styles';
+        styleSheet.textContent = `
+          @keyframes slideUp {
+            from {
+              transform: translateY(100%);
+              opacity: 0;
+            }
+            to {
+              transform: translateY(0);
+              opacity: 1;
+            }
+          }
+
+          @keyframes slideDown {
+            from {
+              transform: translateY(0);
+              opacity: 1;
+            }
+            to {
+              transform: translateY(100%);
+              opacity: 0;
+            }
+          }
+        `;
+        document.head.appendChild(styleSheet);
+      }
+
+      // Create content container
+      const contentContainer = document.createElement('div');
+      contentContainer.style.cssText = `
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex: 1;
+        max-width: calc(100% - 120px);
+      `;
+
+      // Add warning icon
+      const warningIcon = document.createElement('span');
+      warningIcon.textContent = '⚠️';
+      warningIcon.style.cssText = `
+        font-size: 20px;
+        flex-shrink: 0;
+      `;
+
+      // Add platform name
+      const platformText = document.createElement('span');
+      platformText.textContent = `${platform.charAt(0).toUpperCase() + platform.slice(1)} bypass:`;
+      platformText.style.cssText = `
+        font-weight: 600;
+        color: #92400e;
+        flex-shrink: 0;
+      `;
+
+      // Add reason text
+      const reasonText = document.createElement('span');
+      reasonText.textContent = reason;
+      reasonText.style.cssText = `
+        color: #78350f;
+        font-style: italic;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+      `;
+      reasonText.title = reason; // Show full reason on hover
+
+      // Add time counter
+      const timeCounter = document.createElement('span');
+      const startTime = Date.now();
+      const updateTimer = () => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const minutes = Math.floor(elapsed / 60);
+        const seconds = elapsed % 60;
+        timeCounter.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+      };
+      updateTimer();
+      const timerInterval = setInterval(updateTimer, 1000);
+
+      timeCounter.style.cssText = `
+        font-weight: 600;
+        color: #92400e;
+        font-size: 14px;
+        margin-right: 12px;
+        flex-shrink: 0;
+        min-width: 45px;
+        text-align: center;
+        background: rgba(255, 255, 255, 0.5);
+        padding: 4px 8px;
+        border-radius: 12px;
+      `;
+      timeCounter.title = 'Time spent on this site';
+
+      // Add close button
+      const closeButton = document.createElement('button');
+      closeButton.textContent = '✕';
+      closeButton.style.cssText = `
+        background: transparent;
+        border: none;
+        color: #92400e;
+        font-size: 20px;
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: 4px;
+        transition: all 0.2s ease;
+        flex-shrink: 0;
+      `;
+
+      closeButton.addEventListener('mouseenter', () => {
+        closeButton.style.background = 'rgba(0, 0, 0, 0.1)';
+      });
+
+      closeButton.addEventListener('mouseleave', () => {
+        closeButton.style.background = 'transparent';
+      });
+
+      closeButton.addEventListener('click', () => {
+        // Animate out
+        clearInterval(timerInterval);
+        reasonBar.style.animation = 'slideDown 0.3s ease-out forwards';
+        setTimeout(() => {
+          reasonBar.remove();
+          document.body.style.removeProperty('padding-bottom');
+        }, 300);
+      });
+
+      // Assemble the bar
+      contentContainer.appendChild(warningIcon);
+      contentContainer.appendChild(platformText);
+      contentContainer.appendChild(reasonText);
+      reasonBar.appendChild(contentContainer);
+      reasonBar.appendChild(timeCounter);
+      reasonBar.appendChild(closeButton);
+
+      // Add to page
+      document.body.appendChild(reasonBar);
+
+      // Push up page content to avoid covering anything at the bottom
+      setTimeout(() => {
+        document.body.style.paddingBottom = '56px';
+      }, 10);
+
+      // Clean up on navigation
+      CreativityGuardCleanup.trackElement(reasonBar);
+
+      // Store timer interval for cleanup
+      reasonBar.dataset.timerId = timerInterval;
+
+      // Clean up timer when element is removed
+      const originalRemove = reasonBar.remove.bind(reasonBar);
+      reasonBar.remove = function() {
+        clearInterval(timerInterval);
+        document.body.style.removeProperty('padding-bottom');
+        originalRemove();
+      };
+
+    } catch (error) {
+      console.error('%c[Creativity Guard] Error showing reason bar:', 'color: #ff0000;', error);
+    }
+  },
+
   // Show social media restriction modal
   showSocialMediaModal: function(platform, isVacationMode = false, displayName = null) { // Added displayName for media sites
     try {
@@ -2435,11 +2632,21 @@ const socialMediaModule = {
             abortBtn.style.boxShadow = '0 4px 14px rgba(239, 68, 68, 0.3)';
           });
 
+          // Create a wrapper for the button to center it
+          const buttonWrapper = document.createElement('div');
+          buttonWrapper.style.cssText = `
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            margin-top: 20px;
+          `;
+          buttonWrapper.appendChild(abortBtn);
+
           content.appendChild(countdownTitle);
           content.appendChild(timerDisplay);
           content.appendChild(reasonDisplay);
           content.appendChild(messageText);
-          content.appendChild(abortBtn);
+          content.appendChild(buttonWrapper);
         };
 
         // Initial display
@@ -2491,6 +2698,9 @@ const socialMediaModule = {
               () => {
                 // Countdown completed - record and proceed
                 this.recordBypassWithReason(platform, reason, blockType);
+
+                // Show the reason bar to keep the reason visible
+                this.showReasonBar(reason, platform);
 
                 // Animate out before proceeding
                 modal.style.animation = 'modalFadeOut 0.3s ease-in forwards';
