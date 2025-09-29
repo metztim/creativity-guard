@@ -445,3 +445,98 @@ Successfully improved the bypass reason banner UX by repositioning it to the bot
 - Files created: 0
 - Lines modified: ~80 (banner repositioning + timer implementation)
 - Features added: 2 (bottom positioning, usage timer)
+
+---
+
+## Session Log: 2025-09-29
+
+**Project**: creativity-guard
+**Duration**: ~3.5 hours
+**Type**: [feature] [refactor] [bugfix]
+
+### Objectives
+- Prepare extension for informal sharing via LinkedIn
+- Reorganize project structure for development/production separation
+- Experiment with rebranding to "Distraction Doorman"
+- Fix critical DOM and UX issues
+
+### Summary
+Major refactoring session that reorganized the project structure, attempted a rebrand (later reverted), and fixed several critical bugs. Successfully prepared the extension for distribution with improved organization and fixed blocking functionality.
+
+### Files Changed
+- `extension-dev/*` - Created development folder with all extension files
+- `extension/*` - Production folder for distribution
+- `agents/release-agent.md` - Created automated release process documentation
+- `CLAUDE.md` - Updated with new project structure and workflow
+- `extension-dev/manifest.json` - Updated permissions, attempted rebrand (reverted)
+- `extension-dev/content.js` - Fixed DOM issues, removed deprecated APIs, fixed fade transition
+- `extension-dev/popup.html` - Reordered tabs, updated branding (reverted)
+- `extension-dev/popup.js` - Added doorman personality (reverted)
+- `extension-dev/sites.json` - Configuration for blocked sites
+- `extension-dev/INSTALL.txt` - User installation guide
+- `docs/zips/20250929-1041 creativity-guard-extension.zip` - Distribution package
+
+### Technical Notes
+- **Project Reorganization**: Separated development (extension-dev) from production (extension) folders
+- **DOM Fix**: Added null checks for document.body to prevent appendChild errors on early page load
+- **Deprecated API**: Removed 'unload' event listener causing permissions policy violations
+- **UX Improvement**: Removed fade transition on redirect to prevent glimpse of blocked content
+- **Release Process**: Established standardized release workflow with timestamped archives
+- **Rebrand Attempt**: Tried "Distraction Doorman" with personality, reverted to "Creativity Guard"
+- **Early Blocker**: Fixed initialization and removal logic for immediate site blocking
+
+### Future Plans & Unimplemented Phases
+
+#### Phase 1: Custom Site Management UI Enhancement
+**Status**: Partially complete (basic UI exists)
+**Planned Steps**:
+1. Add domain validation with visual feedback
+2. Implement bulk import/export of custom sites
+3. Add categorization for custom sites (productivity, entertainment, etc.)
+4. Create quick-add bookmarklet for adding current site
+
+**Implementation Notes**:
+- Use sites.json as source of truth
+- Sync with Chrome storage for backward compatibility
+- Consider adding favicons for visual recognition
+
+#### Phase 2: Enhanced News Site Blocking
+**Status**: Framework exists, needs UI refinement
+**Planned Steps**:
+1. Add editable list in popup UI (currently only via sites.json)
+2. Implement quick toggle for common news sites
+3. Add time-based news access (e.g., 5 minutes per hour)
+4. Create news site detection patterns
+
+**Implementation Notes**:
+- News sites currently hardcoded in manifest
+- Need dynamic permission handling for new domains
+- Consider category-based blocking (politics, sports, etc.)
+
+#### Phase 3: Advanced Analytics
+**Status**: Not started
+**Planned Steps**:
+1. Track blocking effectiveness (bypasses vs. redirects)
+2. Add weekly/monthly usage reports
+3. Export data for personal analysis
+4. Add goal setting and achievement tracking
+
+### Next Actions
+- [ ] Test extension with multiple users for feedback
+- [ ] Add domain validation for custom sites
+- [ ] Implement news site UI management
+- [ ] Create video tutorial for installation
+- [ ] Add option to toggle early blocker on/off
+- [ ] Test on different Chrome versions and OS
+- [ ] Consider Firefox port using WebExtensions API
+- [ ] Add site-specific blocking messages
+- [ ] Implement whitelist time windows for specific tasks
+
+### Metrics
+- Files modified: 15
+- Files created: 8
+- Tests added: 0
+- Lines added: ~500
+- Lines removed: ~200
+- Bugs fixed: 4 (DOM readiness, unload event, fade transition, early blocker)
+- Features added: 5 (project reorg, release agent, sites.json, custom sites, unified time settings)

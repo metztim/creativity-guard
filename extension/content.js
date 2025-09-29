@@ -226,8 +226,9 @@ const CreativityGuardCleanup = {
 };
 
 // Set up global cleanup handlers
+// Note: 'unload' event is deprecated and causes permissions policy violations
+// Using 'beforeunload' and 'pagehide' for cleanup instead
 window.addEventListener('beforeunload', () => CreativityGuardCleanup.cleanup());
-window.addEventListener('unload', () => CreativityGuardCleanup.cleanup());
 window.addEventListener('pagehide', () => CreativityGuardCleanup.cleanup());
 
 // Make cleanup accessible globally for debugging
@@ -1182,8 +1183,10 @@ function showReflectionModal() {
       announcement.style.position = 'absolute';
       announcement.style.left = '-10000px';
       announcement.textContent = 'Creativity reminder appeared. Please consider thinking first before using AI.';
-      document.body.appendChild(announcement);
-      setTimeout(() => announcement.remove(), 2000);
+      if (document.body) {
+        document.body.appendChild(announcement);
+        setTimeout(() => announcement.remove(), 2000);
+      }
     }, 100);
     
     // Increment AI usage attempt counter
@@ -2973,28 +2976,27 @@ const socialMediaModule = {
       skipButton.setAttribute('title', 'Redirect to reading material (Escape)');
       const skipModalHandler = () => {
         try {
-          // Animate out before redirecting
-          modal.style.animation = 'modalFadeOut 0.3s ease-in forwards';
-          setTimeout(() => {
-            modal.remove();
-            // Try to get redirect URL from sites.json first, then fallback to legacy settings
-            let redirectUrl = 'https://weeatrobots.substack.com'; // Default
-            if (sitesConfig && sitesConfig.settings && sitesConfig.settings.redirectUrl) {
-              redirectUrl = sitesConfig.settings.redirectUrl;
-            } else if (this.settings.redirectUrl) {
-              redirectUrl = this.settings.redirectUrl;
-            }
+          // Immediately redirect without animation to prevent glimpse of blocked site
+          // Try to get redirect URL from sites.json first, then fallback to legacy settings
+          let redirectUrl = 'https://weeatrobots.substack.com'; // Default
+          if (sitesConfig && sitesConfig.settings && sitesConfig.settings.redirectUrl) {
+            redirectUrl = sitesConfig.settings.redirectUrl;
+          } else if (this.settings.redirectUrl) {
+            redirectUrl = this.settings.redirectUrl;
+          }
 
-            const validatedUrl = validateAndSanitizeUrl(redirectUrl);
-            
-            // Additional safety check before redirecting
-            if (validatedUrl && typeof validatedUrl === 'string' && validatedUrl.startsWith('http')) {
-              window.location.href = validatedUrl;
-            } else {
-              console.error('Invalid redirect URL after validation:', validatedUrl);
-              window.location.href = 'https://weeatrobots.substack.com'; // Fallback
-            }
-          }, 300);
+          const validatedUrl = validateAndSanitizeUrl(redirectUrl);
+
+          // Additional safety check before redirecting
+          if (validatedUrl && typeof validatedUrl === 'string' && validatedUrl.startsWith('http')) {
+            window.location.href = validatedUrl;
+          } else {
+            console.error('Invalid redirect URL after validation:', validatedUrl);
+            window.location.href = 'https://weeatrobots.substack.com'; // Fallback
+          }
+
+          // Remove modal after redirect is initiated (won't be seen)
+          modal.remove();
         } catch (error) {
           console.error('Error during redirect:', error);
           window.location.href = 'https://weeatrobots.substack.com'; // Safe fallback
@@ -3062,9 +3064,27 @@ const socialMediaModule = {
       content.appendChild(buttons);
       modal.appendChild(content);
 
-      document.body.appendChild(modal);
+      // Ensure body exists before appending
+      if (document.body) {
+        document.body.appendChild(modal);
+      } else {
+        // Wait for body to be ready
+        const appendModal = () => {
+          if (document.body) {
+            document.body.appendChild(modal);
+          } else {
+            setTimeout(appendModal, 10);
+          }
+        };
+        appendModal();
+      }
 
       // Remove early blocker now that modal is shown
+      const blocker = document.getElementById('creativity-guard-early-blocker');
+      if (blocker) {
+        blocker.remove();
+      }
+      // Also try the element reference
       if (earlyBlockerElement && earlyBlockerElement.parentNode) {
         earlyBlockerElement.remove();
       }
@@ -3082,8 +3102,10 @@ const socialMediaModule = {
         announcement.style.position = 'absolute';
         announcement.style.left = '-10000px';
         announcement.textContent = `Social media restriction modal appeared. ${messageText}`;
-        document.body.appendChild(announcement);
-        setTimeout(() => announcement.remove(), 3000);
+        if (document.body) {
+          document.body.appendChild(announcement);
+          setTimeout(() => announcement.remove(), 3000);
+        }
       }, 100);
     } catch (e) {
       console.error('Error showing social media modal:', e);
