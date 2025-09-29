@@ -1,3 +1,35 @@
+// Immediate CSS to prevent flash during redirects
+// This runs before anything else to hide the page content
+(function() {
+  const hostname = window.location.hostname;
+  const potentiallyBlockedSites = [
+    'linkedin.com', 'twitter.com', 'x.com', 'facebook.com',
+    'theguardian.com', 'nytimes.com', 'washingtonpost.com',
+    'bbc.com', 'cnn.com', 'reddit.com'
+  ];
+
+  const mightBeBlocked = potentiallyBlockedSites.some(site =>
+    hostname === site || hostname.endsWith('.' + site) || hostname.includes(site)
+  );
+
+  // Only inject hiding CSS if we might be blocked
+  if (mightBeBlocked) {
+    const style = document.createElement('style');
+    style.id = 'creativity-guard-hide-flash';
+    style.textContent = `
+      html, body {
+        visibility: hidden !important;
+        opacity: 0 !important;
+      }
+      #creativity-guard-modal, #creativity-guard-early-blocker {
+        visibility: visible !important;
+        opacity: 1 !important;
+      }
+    `;
+    (document.head || document.documentElement).appendChild(style);
+  }
+})();
+
 // Early blocker for social media and news sites - shows immediately while settings load
 function injectEarlyBlocker() {
   // Check if we're on a blocked site (social media or news)
@@ -86,6 +118,21 @@ async function replaceEarlyBlockerWithDynamicCheck() {
       // Site should not be blocked according to sites.json, remove early blocker
       earlyBlockerElement.parentNode.removeChild(earlyBlockerElement);
       console.log('[Creativity Guard] Early blocker removed - site not in blocking configuration');
+
+      // Also reveal the page since it shouldn't be blocked
+      const hideStyle = document.getElementById('creativity-guard-hide-flash');
+      if (hideStyle) {
+        hideStyle.remove();
+      }
+      // Ensure visibility is restored
+      if (document.documentElement) {
+        document.documentElement.style.visibility = '';
+        document.documentElement.style.opacity = '';
+      }
+      if (document.body) {
+        document.body.style.visibility = '';
+        document.body.style.opacity = '';
+      }
     }
   } catch (error) {
     console.error('[Creativity Guard] Error checking dynamic site blocking:', error);
@@ -2055,6 +2102,21 @@ const socialMediaModule = {
           earlyBlockerElement.remove();
         }
 
+        // Reveal the page since access is allowed
+        const hideStyle = document.getElementById('creativity-guard-hide-flash');
+        if (hideStyle) {
+          hideStyle.remove();
+        }
+        // Also ensure visibility is restored
+        if (document.documentElement) {
+          document.documentElement.style.visibility = '';
+          document.documentElement.style.opacity = '';
+        }
+        if (document.body) {
+          document.body.style.visibility = '';
+          document.body.style.opacity = '';
+        }
+
         // Set session consent since this is allowed without prompt
         this.sessionConsent[platform] = true;
         this.saveSessionConsent(); // Save to sessionStorage
@@ -2936,6 +2998,20 @@ const socialMediaModule = {
                   if (earlyBlockerElement && earlyBlockerElement.parentNode) {
                     earlyBlockerElement.remove();
                   }
+                  // Reveal the page now that user has chosen to bypass
+                  const hideStyle = document.getElementById('creativity-guard-hide-flash');
+                  if (hideStyle) {
+                    hideStyle.remove();
+                  }
+                  // Also ensure visibility is restored
+                  if (document.documentElement) {
+                    document.documentElement.style.visibility = '';
+                    document.documentElement.style.opacity = '';
+                  }
+                  if (document.body) {
+                    document.body.style.visibility = '';
+                    document.body.style.opacity = '';
+                  }
                 }, 300);
               },
               () => {
@@ -2976,7 +3052,9 @@ const socialMediaModule = {
       skipButton.setAttribute('title', 'Redirect to reading material (Escape)');
       const skipModalHandler = () => {
         try {
-          // Immediately redirect without animation to prevent glimpse of blocked site
+          // Keep the page hidden during redirect to prevent any flash
+          // The CSS we injected at the start will keep everything hidden
+
           // Try to get redirect URL from sites.json first, then fallback to legacy settings
           let redirectUrl = 'https://weeatrobots.substack.com'; // Default
           if (sitesConfig && sitesConfig.settings && sitesConfig.settings.redirectUrl) {
@@ -2987,6 +3065,15 @@ const socialMediaModule = {
 
           const validatedUrl = validateAndSanitizeUrl(redirectUrl);
 
+          // Remove modal first
+          modal.remove();
+
+          // Ensure page stays hidden during redirect
+          if (document.documentElement) {
+            document.documentElement.style.visibility = 'hidden';
+            document.documentElement.style.opacity = '0';
+          }
+
           // Additional safety check before redirecting
           if (validatedUrl && typeof validatedUrl === 'string' && validatedUrl.startsWith('http')) {
             window.location.href = validatedUrl;
@@ -2994,9 +3081,6 @@ const socialMediaModule = {
             console.error('Invalid redirect URL after validation:', validatedUrl);
             window.location.href = 'https://weeatrobots.substack.com'; // Fallback
           }
-
-          // Remove modal after redirect is initiated (won't be seen)
-          modal.remove();
         } catch (error) {
           console.error('Error during redirect:', error);
           window.location.href = 'https://weeatrobots.substack.com'; // Safe fallback
