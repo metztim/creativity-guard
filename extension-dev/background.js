@@ -35,7 +35,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.type === 'UPDATE_SITES_CONFIG') {
-      handleUpdateSitesConfig(request.config, sendResponse);
+      if (request.config) {
+        // Full config update
+        handleUpdateSitesConfig(request.config, sendResponse);
+      } else if (request.category && request.key !== undefined) {
+        // Partial update (from checkbox toggles, etc.)
+        handlePartialSitesConfigUpdate(request.category, request.key, request.value, sendResponse);
+      } else {
+        sendResponse({ error: 'Invalid update request format', success: false });
+      }
       return true; // Required for async response
     }
 
@@ -464,7 +472,7 @@ function handleGetSitesConfig(sendResponse) {
     });
 }
 
-// Update sites configuration
+// Update sites configuration (full update)
 function handleUpdateSitesConfig(config, sendResponse) {
   if (!config || typeof config !== 'object') {
     sendResponse({ error: 'Invalid configuration provided', success: false });
@@ -480,6 +488,32 @@ function handleUpdateSitesConfig(config, sendResponse) {
     .catch(error => {
       console.error('Error updating sites config:', error);
       sendResponse({ error: 'Failed to update sites configuration', success: false });
+    });
+}
+
+// Update sites configuration (partial update - single field)
+function handlePartialSitesConfigUpdate(category, key, value, sendResponse) {
+  readSitesJson()
+    .then(config => {
+      const sitesConfig = config || getDefaultSitesConfig();
+
+      // Update the specific field
+      if (!sitesConfig[category]) {
+        sitesConfig[category] = {};
+      }
+      sitesConfig[category][key] = value;
+
+      // Save the updated config
+      return writeSitesJson(sitesConfig)
+        .then(() => {
+          // Sync changes to Chrome storage for backward compatibility
+          syncSitesToStorage(sitesConfig);
+          sendResponse({ success: true });
+        });
+    })
+    .catch(error => {
+      console.error('Error updating partial sites config:', error);
+      sendResponse({ error: 'Failed to update site configuration', success: false });
     });
 }
 
