@@ -625,8 +625,11 @@ function updateBypassDisplay(total, withReasons, recentReasons) {
 // Load all settings from sites.json and Chrome storage
 function loadAllSettings() {
   // Load sites.json structure via background script
-  SafeChromeAPI.runtime.sendMessage({ type: 'GET_SITES_CONFIG' }, (sitesConfig) => {
-    if (!sitesConfig) {
+  SafeChromeAPI.runtime.sendMessage({ type: 'GET_SITES_CONFIG' }, (response) => {
+    let sitesConfig;
+    if (response && response.success && response.config) {
+      sitesConfig = response.config;
+    } else {
       console.warn('No sites config returned, using defaults');
       sitesConfig = getDefaultSitesConfig();
     }
@@ -751,7 +754,7 @@ function updateCustomSitesList(customSites) {
 
   customSitesList.innerHTML = '';
 
-  if (customSites.length === 0) {
+  if (!customSites || customSites.length === 0) {
     customSitesList.innerHTML = '<div class="helper-text">No custom sites added yet</div>';
     return;
   }
@@ -787,7 +790,7 @@ function updateCustomSitesList(customSites) {
       font-size: 12px;
       cursor: pointer;
     `;
-    removeButton.onclick = () => removeCustomSite(index);
+    removeButton.onclick = () => removeCustomSite(site.domain);
 
     siteItem.appendChild(siteInfo);
     siteItem.appendChild(removeButton);
@@ -1031,17 +1034,17 @@ function addCustomSite() {
         // Reload settings to update UI
         loadAllSettings();
       } else {
-        ErrorSystem.showError('Failed to add custom site');
+        ErrorSystem.showError('Failed to add custom site: ' + (response?.error || 'Unknown error'));
       }
     });
   });
 }
 
 // Remove custom site
-function removeCustomSite(index) {
+function removeCustomSite(domain) {
   SafeChromeAPI.runtime.sendMessage({
     type: 'REMOVE_CUSTOM_SITE',
-    index: index
+    domain: domain
   }, (response) => {
     if (response && response.success) {
       ErrorSystem.showSuccess('Removed custom site');

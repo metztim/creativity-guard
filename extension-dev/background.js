@@ -568,35 +568,44 @@ function handleOpenSitesJson(sendResponse) {
   }
 }
 
-// Read sites.json file
+// Read sites configuration (from Chrome storage first, then sites.json as fallback)
 async function readSitesJson() {
   try {
+    // First, try to get the config from Chrome storage (where updates are saved)
+    const storageData = await new Promise((resolve) => {
+      chrome.storage.local.get(['sitesConfig'], (result) => {
+        resolve(result.sitesConfig || null);
+      });
+    });
+
+    if (storageData) {
+      console.log('Loaded sites config from Chrome storage');
+      return validateSitesConfig(storageData);
+    }
+
+    // If no data in storage, read from sites.json file as default template
     const response = await fetch(chrome.runtime.getURL('sites.json'));
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     const config = await response.json();
+    console.log('Loaded sites config from sites.json file');
     return validateSitesConfig(config);
   } catch (error) {
-    console.error('Error reading sites.json:', error);
+    console.error('Error reading sites configuration:', error);
     return null;
   }
 }
 
-// Write sites.json file (Note: Extensions cannot write to their own files)
-// This function exists for API consistency but will always fail
+// Write sites configuration to Chrome storage
+// Note: Chrome extensions cannot write to their own files, so we use Chrome storage
 async function writeSitesJson(config) {
-  // Chrome extensions cannot write to their own files in the extension directory
-  // This would require a different approach like downloading the file or using a web service
-  console.warn('Writing to sites.json is not supported in Chrome extensions');
-
-  // Instead, we'll sync to Chrome storage as a fallback
   return new Promise((resolve, reject) => {
     chrome.storage.local.set({ sitesConfig: config }, () => {
       if (chrome.runtime.lastError) {
         reject(new Error(chrome.runtime.lastError.message));
       } else {
-        console.log('Sites config saved to Chrome storage as fallback');
+        console.log('Sites config saved to Chrome storage');
         resolve();
       }
     });
