@@ -1,0 +1,129 @@
+=====================================
+CREATIVITY GUARD - INSTALLATION GUIDE
+=====================================
+
+Version: 1.0.0
+Description: Block distracting sites and encourage thoughtful AI usage
+
+QUICK INSTALL
+=============
+
+1. Open Chrome and go to: chrome://extensions/
+2. Enable "Developer mode" (toggle in top-right corner)
+3. Click "Load unpacked"
+4. Select this "extension" folder
+5. The extension icon (shield) will appear in your toolbar
+6. Click the icon to configure your settings
+
+CONFIGURATION
+=============
+
+The extension opens with three tabs:
+
+1. SOCIAL MEDIA TAB (Default)
+   - Enable/disable blocking for social media sites
+   - Enable/disable blocking for news sites
+   - Add your own custom sites to block
+   - Set allowed time window (e.g., 3pm-7pm)
+   - Configure redirect URL for when sites are blocked
+   - View bypass statistics
+
+2. AI STATS TAB (Experimental)
+   - Toggle "Think First" reminders for AI tools (OFF by default)
+   - View your AI usage statistics
+   - Track how often you think before using AI
+
+3. EXTENSION TAB
+   - Monitor extension usage patterns
+   - Track when extension is disabled/enabled
+
+DEFAULT SETTINGS
+================
+
+- Social media blocking: ENABLED (LinkedIn, Twitter/X, Facebook)
+- News sites blocking: DISABLED (can be enabled in settings)
+- AI "Think First" feature: DISABLED (experimental feature)
+- Allowed time: 3:00 PM - 7:00 PM on weekdays
+- Weekend blocking: Can be enabled in settings
+- Default redirect: https://weeatrobots.substack.com
+
+CUSTOMIZING BLOCKED SITES
+==========================
+
+METHOD 1: Through the Extension Popup
+- Click the extension icon
+- In Social Media tab, scroll to "Custom Sites"
+- Enter domain (e.g., "reddit.com") and click "Add"
+- Sites are immediately blocked during restricted hours
+
+METHOD 2: Edit sites.json Directly
+- Click "Edit sites.json directly" button in the extension
+- Or manually edit the sites.json file in this folder
+- Add sites to appropriate categories:
+  - socialMediaSites: Social platforms
+  - newsSites: News websites
+  - customSites: Any other distracting sites
+- Save the file and reload the extension
+
+FEATURES
+========
+
+✓ Time-based blocking with hard restrictions (no bypass after end time)
+✓ Vacation mode for complete weekend blocking
+✓ Custom site blocking
+✓ Usage statistics and tracking
+✓ Bypass accountability (must provide reason)
+✓ AI usage reminders (experimental)
+
+TROUBLESHOOTING
+===============
+
+Extension not blocking sites?
+- Ensure "Developer mode" is enabled
+- Try reloading the extension (click refresh icon)
+- Check that the site is in your blocked list
+- Verify you're outside the allowed time window
+
+Sites still accessible?
+- Refresh the page after installing
+- Check if you're within allowed hours (3pm-7pm default)
+- Ensure the site domain is correctly added
+
+Can't add custom sites?
+- Use domain format: "example.com" (no https://)
+- Avoid duplicates
+- Try editing sites.json directly if UI fails
+
+PRIVACY
+=======
+
+This extension:
+- Stores all data locally on your device
+- Does not send data to external servers
+- Does not track your browsing history
+- Only activates on configured sites
+
+UNINSTALL
+=========
+
+1. Go to chrome://extensions/
+2. Find "Creativity Guard"
+3. Click "Remove"
+4. Confirm removal
+
+SUPPORT
+=======
+
+This is an unofficial extension shared informally.
+For issues or suggestions, please contact the person who shared this with you.
+
+TIPS FOR PRODUCTIVITY
+=====================
+
+1. Start with default settings and adjust based on your needs
+2. Use vacation mode during focused work periods
+3. Add your most distracting sites to the custom list
+4. Set realistic time windows that match your schedule
+5. Use the redirect to navigate to something productive
+
+Remember: The goal is to be more intentional with your time online!

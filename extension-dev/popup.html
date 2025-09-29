@@ -470,12 +470,20 @@
   
   <div class="tab-container">
     <div class="tab-buttons">
-      <button class="tab-button active" data-tab="ai-stats">AI Stats</button>
-      <button class="tab-button" data-tab="social-media">Social Media</button>
+      <button class="tab-button active" data-tab="social-media">Social Media</button>
+      <button class="tab-button" data-tab="ai-stats">AI Stats (Experimental)</button>
       <button class="tab-button" data-tab="extension-tracking">Extension</button>
     </div>
-    
-    <div id="ai-stats" class="tab-content active">
+
+    <div id="social-media" class="tab-content active">
+      <div class="setting-card">
+        <label class="checkbox-label">
+          <input type="checkbox" id="enableAIThinkFirst" aria-describedby="ai-think-first-help">
+          Enable "Think First" reminders for AI tools
+        </label>
+        <div class="helper-text" id="ai-think-first-help">When enabled, shows a reminder to think independently before using AI tools (Experimental feature)</div>
+      </div>
+
       <div class="stats-container">
         <div class="stat-item">
           <div class="stat-label">AI Usage Attempts</div>
@@ -489,7 +497,7 @@
           <div class="stat-label">Bypassed Check</div>
           <div class="stat-value" id="bypass-count">0</div>
         </div>
-        
+
         <div class="ratio" id="success-ratio">
           You thought first on 0% of your AI interactions
         </div>
@@ -500,56 +508,54 @@
         Reset Stats
       </button>
     </div>
-    
-    <div id="social-media" class="tab-content">
+
+    <div id="ai-stats" class="tab-content">
       <div class="setting-card">
-        <h2 class="settings-title">Platform Settings</h2>
-        
+        <h2 class="settings-title">Sites to Block</h2>
+
         <div class="setting-item">
           <label class="checkbox-label">
-            <input type="checkbox" id="enableLinkedin" checked aria-describedby="linkedin-help">
-            Enable for LinkedIn
+            <input type="checkbox" id="enableSocialMedia" checked aria-describedby="social-help">
+            Block social media sites (LinkedIn, Twitter/X, Facebook)
           </label>
-          <div class="setting-control">
-            <label for="linkedinTime" class="setting-label">Allowed after:</label>
-            <input type="time" id="linkedinTime" value="15:00" aria-describedby="linkedinTime-error">
-            <div class="error-message" id="linkedinTime-error" role="alert"></div>
-          </div>
         </div>
-        
+
         <div class="setting-item">
           <label class="checkbox-label">
-            <input type="checkbox" id="enableTwitter" checked aria-describedby="twitter-help">
-            Enable for Twitter/X
+            <input type="checkbox" id="enableNewsSites" aria-describedby="news-help">
+            Block news sites
           </label>
-          <div class="setting-control">
-            <label for="twitterTime" class="setting-label">Allowed after:</label>
-            <input type="time" id="twitterTime" value="15:00" aria-describedby="twitterTime-error">
-            <div class="error-message" id="twitterTime-error" role="alert"></div>
-          </div>
+          <div class="helper-text" id="news-help">Includes Guardian, NY Times, BBC, CNN, Reddit, and more</div>
         </div>
-        
+
         <div class="setting-item">
-          <label class="checkbox-label">
-            <input type="checkbox" id="enableFacebook" checked aria-describedby="facebook-help">
-            Enable for Facebook
-          </label>
-          <div class="setting-control">
-            <label for="facebookTime" class="setting-label">Allowed after:</label>
-            <input type="time" id="facebookTime" value="15:00" aria-describedby="facebookTime-error">
-            <div class="error-message" id="facebookTime-error" role="alert"></div>
+          <label class="setting-label">Custom Sites:</label>
+          <div id="custom-sites-list" style="margin-bottom: 10px;">
+            <!-- Custom sites will be listed here -->
           </div>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="new-custom-site" placeholder="example.com" style="flex: 1;">
+            <button id="add-custom-site" style="padding: 10px 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer;">Add</button>
+          </div>
+          <button id="edit-sites-json" style="margin-top: 10px; padding: 8px 12px; background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer; font-size: 13px;">📝 Edit sites.json directly</button>
         </div>
       </div>
       
       <div class="setting-card">
         <h2 class="settings-title">Time Restrictions</h2>
-        
+
         <div class="setting-item">
-          <label for="allowedEndTime" class="setting-label">Allowed window ends at:</label>
+          <label for="allowedAfterTime" class="setting-label">Allowed after:</label>
+          <input type="time" id="allowedAfterTime" value="15:00" aria-describedby="allowedAfterTime-error allowedAfterTime-help">
+          <div class="error-message" id="allowedAfterTime-error" role="alert"></div>
+          <div class="helper-text" id="allowedAfterTime-help">All blocked sites are accessible after this time on weekdays</div>
+        </div>
+
+        <div class="setting-item">
+          <label for="allowedEndTime" class="setting-label">Allowed until:</label>
           <input type="time" id="allowedEndTime" value="19:00" aria-describedby="allowedEndTime-error allowedEndTime-help">
           <div class="error-message" id="allowedEndTime-error" role="alert"></div>
-          <div class="helper-text" id="allowedEndTime-help">Social media access is hard-blocked outside this time window on weekdays (no "Continue" option)</div>
+          <div class="helper-text" id="allowedEndTime-help">Sites are blocked again after this time (hard block, no "Continue" option)</div>
         </div>
         
         <div class="setting-item">
@@ -572,7 +578,7 @@
 
         <div class="setting-item">
           <label for="redirectUrl" class="setting-label">Redirect URL:</label>
-          <input type="text" id="redirectUrl" placeholder="https://read.readwise.io" aria-describedby="redirectUrl-error redirectUrl-help">
+          <input type="text" id="redirectUrl" placeholder="https://weeatrobots.substack.com" value="https://weeatrobots.substack.com" aria-describedby="redirectUrl-error redirectUrl-help">
           <div class="error-message" id="redirectUrl-error" role="alert"></div>
           <div class="helper-text" id="redirectUrl-help">URL where you'll be redirected when blocked from social media</div>
         </div>

@@ -281,14 +281,14 @@ window.addEventListener('unload', () => PopupCleanup.cleanup());
 
 // Load stats when popup opens
 document.addEventListener('DOMContentLoaded', function() {
-  // Set up tab navigation
+  // Set up tab navigation with Social Media tab active by default
   setupTabs();
 
   // Load AI stats
   loadAIStats();
 
-  // Load social media settings
-  loadSocialMediaSettings();
+  // Load settings from sites.json and Chrome storage
+  loadAllSettings();
 
   // Load bypass statistics
   loadBypassStatistics();
@@ -299,12 +299,26 @@ document.addEventListener('DOMContentLoaded', function() {
   // Set up buttons
   setupButtons();
 
+  // Set up new UI handlers
+  setupNewUIHandlers();
+
 });
 
-// Handle tab switching
+// Handle tab switching with Social Media tab active by default
 function setupTabs() {
   const tabButtons = document.querySelectorAll('.tab-button');
-  
+
+  // Ensure Social Media tab is active by default
+  document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+  const socialMediaTab = document.querySelector('[data-tab="social-media"]');
+  const socialMediaContent = document.getElementById('social-media');
+  if (socialMediaTab && socialMediaContent) {
+    socialMediaTab.classList.add('active');
+    socialMediaContent.classList.add('active');
+  }
+
   tabButtons.forEach(button => {
     const clickHandler = function() {
       // Remove active class from all tabs
@@ -314,18 +328,23 @@ function setupTabs() {
       document.querySelectorAll('.tab-content').forEach(content => {
         content.classList.remove('active');
       });
-      
+
       // Add active class to clicked tab
       this.classList.add('active');
       const tabId = this.getAttribute('data-tab');
       document.getElementById(tabId).classList.add('active');
 
-      // Reload statistics when switching to social media tab
+      // Reload statistics when switching to relevant tabs
       if (tabId === 'social-media') {
+        loadAIStats();
         loadBypassStatistics();
+      } else if (tabId === 'ai-stats') {
+        loadBypassStatistics();
+      } else if (tabId === 'extension-tracking') {
+        loadExtensionTrackingStats();
       }
     };
-    
+
     button.addEventListener('click', clickHandler);
     PopupCleanup.trackEventListener(button, 'click', clickHandler);
   });
@@ -604,258 +623,491 @@ function updateBypassDisplay(total, withReasons, recentReasons) {
   }
 }
 
-// Load social media settings with enhanced error handling
-function loadSocialMediaSettings() {
-  SafeChromeAPI.runtime.sendMessage({ type: 'GET_SOCIAL_MEDIA_SETTINGS' }, (settings) => {
-    if (!settings) {
-      // Use defaults if no settings returned
-      settings = {};
+// Load all settings from sites.json and Chrome storage
+function loadAllSettings() {
+  // Load sites.json structure via background script
+  SafeChromeAPI.runtime.sendMessage({ type: 'GET_SITES_CONFIG' }, (sitesConfig) => {
+    if (!sitesConfig) {
+      console.warn('No sites config returned, using defaults');
+      sitesConfig = getDefaultSitesConfig();
     }
 
-    try {
-      // Set default values if they don't exist
-      const defaults = {
-        linkedinAllowedHour: 15,
-        twitterAllowedHour: 15,
-        facebookAllowedHour: 15,
-        allowedEndHour: 19, // 7 PM - end of allowed time window
-        enabledForLinkedin: true,
-        enabledForTwitter: true,
-        enabledForFacebook: true,
-        totalWeekendBlock: true,
-        vacationModeEnabled: false,
-        redirectUrl: 'https://read.readwise.io',
-      };
-      
-      settings = { ...defaults, ...settings }; // Merge defaults with loaded settings
-      
-      // Validate and sanitize settings before applying to UI
-      const sanitizedSettings = validateAndSanitizeSettings(settings);
-      
-      // Update UI elements with error handling
-      updateUIElementsSafely(sanitizedSettings);
-      
-      // Settings loaded successfully - no notification needed to avoid spam
-    } catch (error) {
-      console.error('Error processing settings:', error);
-      ErrorSystem.showError(`Failed to load settings: ${error.message}`);
-      
-      // Load defaults as fallback
-      const defaults = {
-        linkedinAllowedHour: 15,
-        twitterAllowedHour: 15,
-        facebookAllowedHour: 15,
-        allowedEndHour: 19,
-        enabledForLinkedin: true,
-        enabledForTwitter: true,
-        enabledForFacebook: true,
-        totalWeekendBlock: true,
-        vacationModeEnabled: false,
-        redirectUrl: 'https://read.readwise.io',
-      };
-      
+    // Load Chrome storage settings
+    SafeChromeAPI.storage.get(['creativityGuardSocialMedia'], (result) => {
       try {
-        updateUIElementsSafely(defaults);
-        NotificationSystem.showWarning('⚠️ Loaded default settings due to error');
-      } catch (fallbackError) {
-        ErrorSystem.showError('Failed to load default settings');
+        const storageSettings = result.creativityGuardSocialMedia || {};
+
+        // Merge sites.json and storage settings
+        const mergedSettings = mergeSitesConfigWithStorage(sitesConfig, storageSettings);
+
+        // Update UI with merged settings
+        updateAllUIElements(mergedSettings, sitesConfig);
+
+      } catch (error) {
+        console.error('Error processing settings:', error);
+        ErrorSystem.showError(`Failed to load settings: ${error.message}`);
+
+        // Fallback to defaults
+        const defaults = getDefaultSitesConfig();
+        updateAllUIElements(defaults, defaults);
       }
-    }
+    });
   });
 }
 
-// Validate and sanitize settings
-function validateAndSanitizeSettings(settings) {
-  const sanitized = { ...settings };
-  
-  // Validate hours
-  const hourFields = [
-    { key: 'linkedinAllowedHour', name: 'LinkedIn allowed hour', default: 15 },
-    { key: 'twitterAllowedHour', name: 'Twitter allowed hour', default: 15 },
-    { key: 'facebookAllowedHour', name: 'Facebook allowed hour', default: 15 },
-    { key: 'allowedEndHour', name: 'End hour', default: 19 }
-  ];
-  
-  hourFields.forEach(field => {
-    const value = parseInt(sanitized[field.key], 10);
-    if (isNaN(value) || value < 0 || value > 23) {
-      console.warn(`Invalid ${field.name}: ${sanitized[field.key]}, using default: ${field.default}`);
-      sanitized[field.key] = field.default;
-    } else {
-      sanitized[field.key] = value;
+// Get default sites configuration
+function getDefaultSitesConfig() {
+  return {
+    aiSites: { enabled: false, sites: [] },
+    socialMediaSites: { enabled: true, sites: [] },
+    newsSites: { enabled: false, sites: [] },
+    customSites: { enabled: true, sites: [] },
+    settings: {
+      allowedAfterHour: 15,
+      allowedEndHour: 19,
+      redirectUrl: 'https://weeatrobots.substack.com',
+      vacationMode: false,
+      totalWeekendBlock: false
     }
-  });
-  
-  // Validate boolean fields
-  const booleanFields = [
-    'enabledForLinkedin',
-    'enabledForTwitter', 
-    'enabledForFacebook',
-    'totalWeekendBlock',
-    'vacationModeEnabled'
-  ];
-  
-  booleanFields.forEach(field => {
-    if (typeof sanitized[field] !== 'boolean') {
-      sanitized[field] = !!sanitized[field]; // Convert to boolean
+  };
+}
+
+// Merge sites.json configuration with Chrome storage settings
+function mergeSitesConfigWithStorage(sitesConfig, storageSettings) {
+  return {
+    ...sitesConfig,
+    settings: {
+      ...sitesConfig.settings,
+      ...storageSettings,
+      // Ensure redirect URL default
+      redirectUrl: storageSettings.redirectUrl || sitesConfig.settings?.redirectUrl || 'https://weeatrobots.substack.com'
     }
-  });
-  
-  // Validate and sanitize URL
+  };
+}
+
+// Update all UI elements with new structure
+function updateAllUIElements(mergedSettings, sitesConfig) {
   try {
-    sanitized.redirectUrl = ValidationUtils.validateUrl(sanitized.redirectUrl || 'https://read.readwise.io', 'Redirect URL');
+    // Update AI Think First toggle (in Social Media tab)
+    const enableAIThinkFirst = document.getElementById('enableAIThinkFirst');
+    if (enableAIThinkFirst) {
+      enableAIThinkFirst.checked = sitesConfig.aiSites?.enabled || false;
+    }
+
+    // Update Social Media toggle (in AI Stats tab)
+    const enableSocialMedia = document.getElementById('enableSocialMedia');
+    if (enableSocialMedia) {
+      enableSocialMedia.checked = sitesConfig.socialMediaSites?.enabled || false;
+    }
+
+    // Update News Sites toggle (in AI Stats tab)
+    const enableNewsSites = document.getElementById('enableNewsSites');
+    if (enableNewsSites) {
+      enableNewsSites.checked = sitesConfig.newsSites?.enabled || false;
+    }
+
+    // Update time settings - using unified allowedAfterTime for all
+    const allowedAfterTime = document.getElementById('allowedAfterTime');
+    if (allowedAfterTime) {
+      const hour = mergedSettings.settings?.allowedAfterHour || 15;
+      allowedAfterTime.value = `${hour.toString().padStart(2, '0')}:00`;
+    }
+
+    const allowedEndTime = document.getElementById('allowedEndTime');
+    if (allowedEndTime) {
+      const hour = mergedSettings.settings?.allowedEndHour || 19;
+      allowedEndTime.value = `${hour.toString().padStart(2, '0')}:00`;
+    }
+
+    // Update checkboxes
+    const totalWeekendBlock = document.getElementById('totalWeekendBlock');
+    if (totalWeekendBlock) {
+      totalWeekendBlock.checked = mergedSettings.settings?.totalWeekendBlock || false;
+    }
+
+    const vacationMode = document.getElementById('vacationMode');
+    if (vacationMode) {
+      vacationMode.checked = mergedSettings.settings?.vacationMode || false;
+    }
+
+    // Update redirect URL with default
+    const redirectUrl = document.getElementById('redirectUrl');
+    if (redirectUrl) {
+      redirectUrl.value = mergedSettings.settings?.redirectUrl || 'https://weeatrobots.substack.com';
+    }
+
+    // Update custom sites list
+    updateCustomSitesList(sitesConfig.customSites?.sites || []);
+
   } catch (error) {
-    console.warn('Invalid redirect URL, using default:', error.message);
-    sanitized.redirectUrl = 'https://read.readwise.io';
+    console.error('Error updating UI elements:', error);
+    ErrorSystem.showError('Failed to update UI elements');
   }
-  
-  return sanitized;
 }
 
-// Safely update UI elements
-function updateUIElementsSafely(settings) {
-  const updates = [
-    { id: 'enableLinkedin', type: 'checkbox', value: settings.enabledForLinkedin },
-    { id: 'linkedinTime', type: 'time', value: `${settings.linkedinAllowedHour.toString().padStart(2, '0')}:00` },
-    { id: 'enableTwitter', type: 'checkbox', value: settings.enabledForTwitter },
-    { id: 'twitterTime', type: 'time', value: `${settings.twitterAllowedHour.toString().padStart(2, '0')}:00` },
-    { id: 'enableFacebook', type: 'checkbox', value: settings.enabledForFacebook },
-    { id: 'facebookTime', type: 'time', value: `${settings.facebookAllowedHour.toString().padStart(2, '0')}:00` },
-    { id: 'allowedEndTime', type: 'time', value: `${settings.allowedEndHour.toString().padStart(2, '0')}:00` },
-    { id: 'totalWeekendBlock', type: 'checkbox', value: settings.totalWeekendBlock },
-    { id: 'vacationMode', type: 'checkbox', value: settings.vacationModeEnabled },
-    { id: 'redirectUrl', type: 'text', value: settings.redirectUrl }
-  ];
-  
-  updates.forEach(update => {
-    try {
-      const element = document.getElementById(update.id);
-      if (!element) {
-        console.warn(`UI element not found: ${update.id}`);
-        return;
+// Update custom sites list display
+function updateCustomSitesList(customSites) {
+  const customSitesList = document.getElementById('custom-sites-list');
+  if (!customSitesList) return;
+
+  customSitesList.innerHTML = '';
+
+  if (customSites.length === 0) {
+    customSitesList.innerHTML = '<div class="helper-text">No custom sites added yet</div>';
+    return;
+  }
+
+  customSites.forEach((site, index) => {
+    const siteItem = document.createElement('div');
+    siteItem.style.cssText = `
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      margin-bottom: 6px;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+    `;
+
+    const siteInfo = document.createElement('div');
+    siteInfo.style.cssText = 'flex: 1;';
+    siteInfo.innerHTML = `
+      <div style="font-weight: 500; color: #374151;">${site.name || site.domain}</div>
+      <div style="font-size: 12px; color: #6b7280;">${site.domain}</div>
+    `;
+
+    const removeButton = document.createElement('button');
+    removeButton.textContent = 'Remove';
+    removeButton.style.cssText = `
+      padding: 4px 8px;
+      background: #ef4444;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+    `;
+    removeButton.onclick = () => removeCustomSite(index);
+
+    siteItem.appendChild(siteInfo);
+    siteItem.appendChild(removeButton);
+    customSitesList.appendChild(siteItem);
+  });
+}
+
+// Set up new UI handlers for sites.json integration
+function setupNewUIHandlers() {
+  // AI Think First toggle handler (in Social Media tab)
+  const enableAIThinkFirst = document.getElementById('enableAIThinkFirst');
+  if (enableAIThinkFirst) {
+    const handler = () => {
+      updateSitesConfig('aiSites', 'enabled', enableAIThinkFirst.checked);
+      // Also update Chrome storage for backward compatibility
+      updateSettings('enableAIThinkFirst', enableAIThinkFirst.checked);
+    };
+    enableAIThinkFirst.addEventListener('change', handler);
+    PopupCleanup.trackEventListener(enableAIThinkFirst, 'change', handler);
+  }
+
+  // Social Media toggle handler (in AI Stats tab) - controls all social media sites
+  const enableSocialMedia = document.getElementById('enableSocialMedia');
+  if (enableSocialMedia) {
+    const handler = () => {
+      updateSitesConfig('socialMediaSites', 'enabled', enableSocialMedia.checked);
+      // Also update Chrome storage for backward compatibility
+      updateSettings('enableSocialMedia', enableSocialMedia.checked);
+    };
+    enableSocialMedia.addEventListener('change', handler);
+    PopupCleanup.trackEventListener(enableSocialMedia, 'change', handler);
+  }
+
+  // News Sites toggle handler (in AI Stats tab)
+  const enableNewsSites = document.getElementById('enableNewsSites');
+  if (enableNewsSites) {
+    const handler = () => {
+      updateSitesConfig('newsSites', 'enabled', enableNewsSites.checked);
+      // Also update Chrome storage for backward compatibility
+      updateSettings('enableNewsSites', enableNewsSites.checked);
+    };
+    enableNewsSites.addEventListener('change', handler);
+    PopupCleanup.trackEventListener(enableNewsSites, 'change', handler);
+  }
+
+  // Time settings handlers - unified allowedAfterTime for all sites
+  const allowedAfterTime = document.getElementById('allowedAfterTime');
+  if (allowedAfterTime) {
+    const handler = () => {
+      try {
+        const validation = ValidationUtils.validateTimeInput(allowedAfterTime.value, 'Allowed after time');
+        updateSettings('allowedAfterHour', validation.hour);
+        // Also update sites.json settings
+        updateSitesConfig('settings', 'allowedAfterHour', validation.hour);
+        InputValidation.showValidation('allowedAfterTime', true);
+      } catch (error) {
+        InputValidation.showValidation('allowedAfterTime', false, error.message);
       }
-      
-      if (update.type === 'checkbox') {
-        element.checked = update.value;
-      } else {
-        element.value = update.value;
+    };
+    allowedAfterTime.addEventListener('change', handler);
+    allowedAfterTime.addEventListener('blur', handler);
+    PopupCleanup.trackEventListener(allowedAfterTime, 'change', handler);
+    PopupCleanup.trackEventListener(allowedAfterTime, 'blur', handler);
+  }
+
+  const allowedEndTime = document.getElementById('allowedEndTime');
+  if (allowedEndTime) {
+    const handler = () => {
+      try {
+        const validation = ValidationUtils.validateTimeInput(allowedEndTime.value, 'Allowed end time');
+        updateSettings('allowedEndHour', validation.hour);
+        // Also update sites.json settings
+        updateSitesConfig('settings', 'allowedEndHour', validation.hour);
+        InputValidation.showValidation('allowedEndTime', true);
+        InputValidation.validateTimeLogic();
+      } catch (error) {
+        InputValidation.showValidation('allowedEndTime', false, error.message);
       }
-    } catch (error) {
-      console.error(`Error updating UI element ${update.id}:`, error);
+    };
+    allowedEndTime.addEventListener('change', handler);
+    allowedEndTime.addEventListener('blur', handler);
+    PopupCleanup.trackEventListener(allowedEndTime, 'change', handler);
+    PopupCleanup.trackEventListener(allowedEndTime, 'blur', handler);
+  }
+
+  // Other settings handlers - sync both Chrome storage and sites.json
+  const totalWeekendBlock = document.getElementById('totalWeekendBlock');
+  if (totalWeekendBlock) {
+    const handler = () => {
+      updateSettings('totalWeekendBlock', totalWeekendBlock.checked);
+      updateSitesConfig('settings', 'totalWeekendBlock', totalWeekendBlock.checked);
+    };
+    totalWeekendBlock.addEventListener('change', handler);
+    PopupCleanup.trackEventListener(totalWeekendBlock, 'change', handler);
+  }
+
+  const vacationMode = document.getElementById('vacationMode');
+  if (vacationMode) {
+    const handler = () => {
+      updateSettings('vacationMode', vacationMode.checked);
+      updateSitesConfig('settings', 'vacationMode', vacationMode.checked);
+    };
+    vacationMode.addEventListener('change', handler);
+    PopupCleanup.trackEventListener(vacationMode, 'change', handler);
+  }
+
+  const redirectUrl = document.getElementById('redirectUrl');
+  if (redirectUrl) {
+    const handler = () => {
+      try {
+        const validatedUrl = ValidationUtils.validateUrl(redirectUrl.value || 'https://weeatrobots.substack.com', 'Redirect URL');
+        updateSettings('redirectUrl', validatedUrl);
+        updateSitesConfig('settings', 'redirectUrl', validatedUrl);
+        InputValidation.showValidation('redirectUrl', true);
+      } catch (error) {
+        InputValidation.showValidation('redirectUrl', false, error.message);
+      }
+    };
+    redirectUrl.addEventListener('change', handler);
+    redirectUrl.addEventListener('blur', handler);
+    PopupCleanup.trackEventListener(redirectUrl, 'change', handler);
+    PopupCleanup.trackEventListener(redirectUrl, 'blur', handler);
+  }
+
+  // Custom sites handlers
+  const addCustomSiteBtn = document.getElementById('add-custom-site');
+  if (addCustomSiteBtn) {
+    const handler = () => addCustomSite();
+    addCustomSiteBtn.addEventListener('click', handler);
+    PopupCleanup.trackEventListener(addCustomSiteBtn, 'click', handler);
+  }
+
+  const newCustomSiteInput = document.getElementById('new-custom-site');
+  if (newCustomSiteInput) {
+    const handler = (e) => {
+      if (e.key === 'Enter') {
+        addCustomSite();
+      }
+    };
+    newCustomSiteInput.addEventListener('keypress', handler);
+    PopupCleanup.trackEventListener(newCustomSiteInput, 'keypress', handler);
+  }
+
+  // Edit sites.json button handler
+  const editSitesJsonBtn = document.getElementById('edit-sites-json');
+  if (editSitesJsonBtn) {
+    const handler = () => {
+      SafeChromeAPI.runtime.sendMessage({ type: 'OPEN_SITES_JSON' }, (response) => {
+        if (response && response.success) {
+          ErrorSystem.showSuccess('Opening sites.json file...');
+        } else {
+          ErrorSystem.showError('Failed to open sites.json file');
+        }
+      });
+    };
+    editSitesJsonBtn.addEventListener('click', handler);
+    PopupCleanup.trackEventListener(editSitesJsonBtn, 'click', handler);
+  }
+}
+
+// Update sites.json configuration
+function updateSitesConfig(category, key, value) {
+  SafeChromeAPI.runtime.sendMessage({
+    type: 'UPDATE_SITES_CONFIG',
+    category: category,
+    key: key,
+    value: value
+  }, (response) => {
+    if (response && response.success) {
+      // Configuration updated successfully
+    } else {
+      ErrorSystem.showError('Failed to update site configuration');
     }
   });
 }
 
-// Function to save social media settings with comprehensive validation
+// Update settings in both sites.json and Chrome storage
+function updateSettings(key, value) {
+  // Update Chrome storage
+  SafeChromeAPI.storage.get(['creativityGuardSocialMedia'], (result) => {
+    const settings = result.creativityGuardSocialMedia || {};
+    settings[key] = value;
+
+    SafeChromeAPI.storage.set({ creativityGuardSocialMedia: settings }, (success) => {
+      if (success) {
+        // Also update sites.json via background script
+        SafeChromeAPI.runtime.sendMessage({
+          type: 'UPDATE_SITES_CONFIG',
+          category: 'settings',
+          key: key,
+          value: value
+        });
+      } else {
+        ErrorSystem.showError('Failed to save setting');
+      }
+    });
+  });
+}
+
+// Add custom site
+function addCustomSite() {
+  const input = document.getElementById('new-custom-site');
+  if (!input) return;
+
+  const rawDomain = input.value.trim();
+  if (!rawDomain) {
+    ErrorSystem.showError('Please enter a domain name');
+    return;
+  }
+
+  // Clean the domain (remove protocol, www, etc.)
+  const domain = cleanDomainInput(rawDomain);
+
+  // Validate domain format
+  if (!isValidDomain(domain)) {
+    ErrorSystem.showError('Please enter a valid domain (e.g., example.com)');
+    return;
+  }
+
+  // Check for duplicates by getting current sites first
+  SafeChromeAPI.runtime.sendMessage({ type: 'GET_SITES_CONFIG' }, (sitesConfig) => {
+    const currentSites = sitesConfig?.customSites?.sites || [];
+    const isDuplicate = currentSites.some(site => site.domain.toLowerCase() === domain.toLowerCase());
+
+    if (isDuplicate) {
+      ErrorSystem.showError(`${domain} is already in your custom sites list`);
+      return;
+    }
+
+    // Add to sites.json via background script
+    SafeChromeAPI.runtime.sendMessage({
+      type: 'ADD_CUSTOM_SITE',
+      site: {
+        domain: domain,
+        name: domain.charAt(0).toUpperCase() + domain.slice(1)
+      }
+    }, (response) => {
+      if (response && response.success) {
+        input.value = '';
+        ErrorSystem.showSuccess(`Added ${domain} to custom sites`);
+        // Reload settings to update UI
+        loadAllSettings();
+      } else {
+        ErrorSystem.showError('Failed to add custom site');
+      }
+    });
+  });
+}
+
+// Remove custom site
+function removeCustomSite(index) {
+  SafeChromeAPI.runtime.sendMessage({
+    type: 'REMOVE_CUSTOM_SITE',
+    index: index
+  }, (response) => {
+    if (response && response.success) {
+      ErrorSystem.showSuccess('Removed custom site');
+      // Reload settings to update UI
+      loadAllSettings();
+    } else {
+      ErrorSystem.showError('Failed to remove custom site');
+    }
+  });
+}
+
+// Clean domain input by removing protocol, www, paths, etc.
+function cleanDomainInput(domain) {
+  if (!domain || typeof domain !== 'string') {
+    return '';
+  }
+
+  let cleanDomain = domain.trim().toLowerCase();
+
+  // Remove protocol if present
+  cleanDomain = cleanDomain.replace(/^https?:\/\//, '');
+
+  // Remove www prefix
+  cleanDomain = cleanDomain.replace(/^www\./, '');
+
+  // Remove path, query params, and fragments
+  cleanDomain = cleanDomain.split('/')[0].split('?')[0].split('#')[0];
+
+  // Remove port if present
+  cleanDomain = cleanDomain.split(':')[0];
+
+  return cleanDomain;
+}
+
+// Validate domain format with enhanced validation
+function isValidDomain(domain) {
+  if (!domain || typeof domain !== 'string') {
+    return false;
+  }
+
+  const cleanDomain = cleanDomainInput(domain);
+
+  // Basic domain format validation
+  const domainRegex = /^([a-z0-9-]+\.)*[a-z0-9-]+\.[a-z]{2,}$/i;
+
+  // Check for invalid characters and patterns
+  if (cleanDomain.includes(' ') || cleanDomain.includes('/') || cleanDomain.includes(':')) {
+    return false;
+  }
+
+  return domainRegex.test(cleanDomain);
+}
+
+// Legacy function for backward compatibility - now delegates to new system
 function saveSocialMediaSettings() {
-  try {
-    // Collect and validate all settings
-    const settings = collectAndValidateSettings();
-    
-    // Send message to background script to save settings
-    SafeChromeAPI.runtime.sendMessage({ type: 'SET_SOCIAL_MEDIA_SETTINGS', settings: settings }, (response) => {
-      if (!response) {
-        ErrorSystem.showError('Failed to save settings - no response from extension');
-        return;
-      }
-      
-      if (response.success) {
-        ErrorSystem.showSuccess('Settings saved successfully');
-      } else {
-        ErrorSystem.showError('Failed to save settings - server error');
-      }
-    });
-  } catch (error) {
-    console.error('Error saving social media settings:', error);
-    ErrorSystem.showError(`Failed to save settings: ${error.message}`);
-  }
+  // This function is maintained for backward compatibility but the new handlers
+  // save settings automatically when changed
+  console.log('saveSocialMediaSettings called - settings are now saved automatically');
 }
 
-// Collect and validate settings from UI
+// Legacy function maintained for compatibility
 function collectAndValidateSettings() {
-  const errors = [];
-  let settings = {};
-  
-  try {
-    // Collect checkbox values
-    const checkboxFields = [
-      { id: 'enableLinkedin', key: 'enabledForLinkedin' },
-      { id: 'enableTwitter', key: 'enabledForTwitter' },
-      { id: 'enableFacebook', key: 'enabledForFacebook' },
-      { id: 'totalWeekendBlock', key: 'totalWeekendBlock' },
-      { id: 'vacationMode', key: 'vacationModeEnabled' }
-    ];
-    
-    checkboxFields.forEach(field => {
-      const element = document.getElementById(field.id);
-      if (!element) {
-        errors.push(`Missing UI element: ${field.id}`);
-        return;
-      }
-      settings[field.key] = element.checked;
-    });
-    
-    // Collect and validate time values
-    const timeFields = [
-      { id: 'linkedinTime', key: 'linkedinAllowedHour', name: 'LinkedIn time' },
-      { id: 'twitterTime', key: 'twitterAllowedHour', name: 'Twitter time' },
-      { id: 'facebookTime', key: 'facebookAllowedHour', name: 'Facebook time' },
-      { id: 'allowedEndTime', key: 'allowedEndHour', name: 'End time' }
-    ];
-    
-    timeFields.forEach(field => {
-      const element = document.getElementById(field.id);
-      if (!element) {
-        errors.push(`Missing UI element: ${field.id}`);
-        return;
-      }
-      
-      try {
-        const timeValue = element.value || '15:00';
-        const validation = ValidationUtils.validateTimeInput(timeValue, field.name);
-        settings[field.key] = validation.hour;
-      } catch (error) {
-        errors.push(`${field.name}: ${error.message}`);
-      }
-    });
-    
-    // Validate redirect URL
-    const urlElement = document.getElementById('redirectUrl');
-    if (!urlElement) {
-      errors.push('Missing redirect URL field');
-    } else {
-      try {
-        const urlValue = urlElement.value || 'https://read.readwise.io';
-        settings.redirectUrl = ValidationUtils.validateUrl(urlValue, 'Redirect URL');
-      } catch (error) {
-        errors.push(`Redirect URL: ${error.message}`);
-      }
-    }
-    
-    // Additional business logic validation
-    if (settings.linkedinAllowedHour >= settings.allowedEndHour) {
-      errors.push('LinkedIn start time must be before end time');
-    }
-    
-    if (settings.twitterAllowedHour >= settings.allowedEndHour) {
-      errors.push('Twitter start time must be before end time');
-    }
-    
-    if (settings.facebookAllowedHour >= settings.allowedEndHour) {
-      errors.push('Facebook start time must be before end time');
-    }
-    
-    if (errors.length > 0) {
-      throw new Error(errors.join('; '));
-    }
-    
-    return settings;
-  } catch (error) {
-    if (errors.length > 0) {
-      throw new Error(errors.join('; '));
-    }
-    throw error;
-  }
+  // This function is maintained for backward compatibility
+  // Settings collection is now handled by individual input handlers
+  return {};
 }
 
 // Enhanced input validation system
@@ -864,17 +1116,17 @@ const InputValidation = {
   showValidation: function(inputId, isValid, errorMessage = '') {
     const input = document.getElementById(inputId);
     const errorDiv = document.getElementById(inputId + '-error');
-    
+
     if (!input) return;
-    
+
     // Clear previous states
     input.classList.remove('error-input', 'success-input');
-    
+
     if (errorDiv) {
       errorDiv.style.display = 'none';
       errorDiv.textContent = '';
     }
-    
+
     if (isValid) {
       input.classList.add('success-input');
       setTimeout(() => {
@@ -888,12 +1140,12 @@ const InputValidation = {
       }
     }
   },
-  
+
   // Validate time input in real-time
   validateTimeInput: function(inputId, fieldName) {
     const input = document.getElementById(inputId);
     if (!input) return true;
-    
+
     try {
       const validation = ValidationUtils.validateTimeInput(input.value, fieldName);
       this.showValidation(inputId, true);
@@ -903,14 +1155,14 @@ const InputValidation = {
       return false;
     }
   },
-  
+
   // Validate URL input in real-time
   validateUrlInput: function(inputId, fieldName) {
     const input = document.getElementById(inputId);
     if (!input) return true;
-    
+
     try {
-      const validated = ValidationUtils.validateUrl(input.value || 'https://read.readwise.io', fieldName);
+      const validated = ValidationUtils.validateUrl(input.value || 'https://weeatrobots.substack.com', fieldName);
       this.showValidation(inputId, true);
       return true;
     } catch (error) {
@@ -918,106 +1170,35 @@ const InputValidation = {
       return false;
     }
   },
-  
+
   // Validate business logic (start time vs end time)
   validateTimeLogic: function() {
     const endTimeInput = document.getElementById('allowedEndTime');
-    if (!endTimeInput) return true;
-    
+    const startTimeInput = document.getElementById('allowedAfterTime');
+
+    if (!endTimeInput || !startTimeInput) return true;
+
     const endHour = parseInt((endTimeInput.value || '19:00').split(':')[0], 10);
-    
-    const timeInputs = [
-      { id: 'linkedinTime', name: 'LinkedIn start time' },
-      { id: 'twitterTime', name: 'Twitter start time' },
-      { id: 'facebookTime', name: 'Facebook start time' }
-    ];
-    
+    const startHour = parseInt((startTimeInput.value || '15:00').split(':')[0], 10);
+
     let allValid = true;
-    
-    timeInputs.forEach(timeInput => {
-      const input = document.getElementById(timeInput.id);
-      if (input) {
-        const startHour = parseInt((input.value || '15:00').split(':')[0], 10);
-        if (startHour >= endHour) {
-          this.showValidation(timeInput.id, false, `${timeInput.name} must be before end time`);
-          allValid = false;
-        } else {
-          // Only clear error if it was a time logic error
-          const errorDiv = document.getElementById(timeInput.id + '-error');
-          if (errorDiv && errorDiv.textContent.includes('must be before end time')) {
-            this.showValidation(timeInput.id, true);
-          }
-        }
+
+    if (startHour >= endHour) {
+      this.showValidation('allowedAfterTime', false, 'Start time must be before end time');
+      allValid = false;
+    } else {
+      // Clear any previous time logic errors
+      const errorDiv = document.getElementById('allowedAfterTime-error');
+      if (errorDiv && errorDiv.textContent.includes('must be before end time')) {
+        this.showValidation('allowedAfterTime', true);
       }
-    });
-    
+    }
+
     return allValid;
   }
 };
 
-// Add event listeners for social media settings changes with real-time validation
-const settingsConfig = [
-  {
-    ids: ['enableLinkedin', 'enableTwitter', 'enableFacebook', 'totalWeekendBlock', 'vacationMode'],
-    events: ['change'],
-    validator: null // Checkboxes don't need validation
-  },
-  {
-    ids: ['linkedinTime', 'twitterTime', 'facebookTime'],
-    events: ['change', 'blur'],
-    validator: (id) => {
-      const fieldNames = {
-        'linkedinTime': 'LinkedIn time',
-        'twitterTime': 'Twitter time', 
-        'facebookTime': 'Facebook time'
-      };
-      const isValid = InputValidation.validateTimeInput(id, fieldNames[id]);
-      InputValidation.validateTimeLogic(); // Also check time logic
-      return isValid;
-    }
-  },
-  {
-    ids: ['allowedEndTime'],
-    events: ['change', 'blur'],
-    validator: (id) => {
-      const isValid = InputValidation.validateTimeInput(id, 'End time');
-      InputValidation.validateTimeLogic(); // Also check time logic
-      return isValid;
-    }
-  },
-  {
-    ids: ['redirectUrl'],
-    events: ['change', 'blur'],
-    validator: (id) => InputValidation.validateUrlInput(id, 'Redirect URL')
-  }
-];
-
-settingsConfig.forEach(config => {
-  config.ids.forEach(id => {
-    const element = document.getElementById(id);
-    if (element) {
-      config.events.forEach(eventType => {
-        const handler = function() {
-          // Run validation if provided
-          let isValid = true;
-          if (config.validator) {
-            isValid = config.validator(id);
-          }
-          
-          // Only save if validation passed (or no validation needed)
-          if (isValid || !config.validator) {
-            saveSocialMediaSettings();
-          }
-        };
-        
-        element.addEventListener(eventType, handler);
-        PopupCleanup.trackEventListener(element, eventType, handler);
-      });
-    } else {
-      console.warn(`Element with ID ${id} not found for event listener.`);
-    }
-  });
-});
+// Legacy settings configuration removed - new handlers are set up in setupNewUIHandlers()
 
 
 // Set up all button event handlers

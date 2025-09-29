@@ -2,17 +2,18 @@
 function injectEarlyBlocker() {
   // Check if we're on a blocked site (social media or news)
   const hostname = window.location.hostname;
-  const isBlockedSite =
-    hostname.includes('linkedin.com') ||
-    hostname.includes('twitter.com') ||
-    hostname.includes('x.com') ||
-    hostname.includes('facebook.com') ||
-    hostname.includes('theguardian.com') ||
-    hostname.includes('nytimes.com') ||
-    hostname.includes('washingtonpost.com') ||
-    hostname.includes('bbc.com') ||
-    hostname.includes('cnn.com') ||
-    hostname.includes('reddit.com');
+
+  // Default hardcoded check for immediate blocking while sites.json loads
+  // This will be replaced with async check once sites.json is loaded
+  const defaultBlockedSites = [
+    'linkedin.com', 'twitter.com', 'x.com', 'facebook.com',
+    'theguardian.com', 'nytimes.com', 'washingtonpost.com',
+    'bbc.com', 'cnn.com', 'reddit.com'
+  ];
+
+  const isBlockedSite = defaultBlockedSites.some(site =>
+    hostname === site || hostname.endsWith('.' + site) || hostname.includes(site)
+  );
 
   if (!isBlockedSite) {
     return null;
@@ -75,6 +76,24 @@ function injectEarlyBlocker() {
 
 // Inject early blocker immediately for social media sites
 const earlyBlockerElement = injectEarlyBlocker();
+
+// Replace early blocker with dynamic check once sites.json loads
+async function replaceEarlyBlockerWithDynamicCheck() {
+  try {
+    const blockResult = await shouldBlockCurrentSite();
+
+    if (!blockResult.shouldBlock && earlyBlockerElement && earlyBlockerElement.parentNode) {
+      // Site should not be blocked according to sites.json, remove early blocker
+      earlyBlockerElement.parentNode.removeChild(earlyBlockerElement);
+      console.log('[Creativity Guard] Early blocker removed - site not in blocking configuration');
+    }
+  } catch (error) {
+    console.error('[Creativity Guard] Error checking dynamic site blocking:', error);
+  }
+}
+
+// Schedule dynamic check to replace early blocker
+setTimeout(replaceEarlyBlockerWithDynamicCheck, 100);
 
 // Resource tracking and cleanup system
 const CreativityGuardCleanup = {
@@ -379,7 +398,7 @@ const storage = {
 function validateAndSanitizeUrl(url) {
   if (!url || typeof url !== 'string') {
     console.warn('Invalid URL provided:', url);
-    return 'https://read.readwise.io'; // Safe default
+    return 'https://weeatrobots.substack.com'; // Safe default
   }
   
   try {
@@ -391,7 +410,7 @@ function validateAndSanitizeUrl(url) {
         trimmedUrl.includes('vbscript:') ||
         trimmedUrl.includes('file:')) {
       console.warn('Potentially malicious URL blocked:', trimmedUrl);
-      return 'https://read.readwise.io';
+      return 'https://weeatrobots.substack.com';
     }
     
     // Add protocol if missing
@@ -406,7 +425,7 @@ function validateAndSanitizeUrl(url) {
     // Only allow HTTP and HTTPS protocols
     if (urlObj.protocol !== 'http:' && urlObj.protocol !== 'https:') {
       console.warn('Non-HTTP(S) protocol blocked:', urlObj.protocol);
-      return 'https://read.readwise.io';
+      return 'https://weeatrobots.substack.com';
     }
     
     // Optional: Whitelist of allowed domains (can be extended)
@@ -451,6 +470,93 @@ function saveStats() {
 
 // Initialize stats
 loadStats();
+
+// Sites configuration cache
+let sitesConfig = null;
+
+// Load sites configuration from sites.json
+async function loadSitesConfig() {
+  if (sitesConfig) {
+    return sitesConfig;
+  }
+
+  try {
+    const response = await fetch(chrome.runtime.getURL('sites.json'));
+    if (!response.ok) {
+      throw new Error(`Failed to load sites.json: ${response.status}`);
+    }
+    sitesConfig = await response.json();
+    console.log('[Creativity Guard] Loaded sites configuration:', sitesConfig);
+    return sitesConfig;
+  } catch (error) {
+    console.error('[Creativity Guard] Error loading sites.json:', error);
+    // Return default configuration if loading fails
+    sitesConfig = {
+      aiSites: { enabled: false, sites: [] },
+      socialMediaSites: { enabled: true, sites: [] },
+      newsSites: { enabled: false, sites: [] },
+      customSites: { enabled: false, sites: [] },
+      settings: {
+        allowedAfterHour: 15,
+        allowedEndHour: 19,
+        redirectUrl: 'https://weeatrobots.substack.com',
+        vacationMode: false,
+        totalWeekendBlock: false
+      }
+    };
+    return sitesConfig;
+  }
+}
+
+// Check if a hostname matches any site in a sites array
+function isHostnameInSites(hostname, sites) {
+  return sites.some(site => {
+    const domain = site.domain || site;
+    return hostname === domain || hostname.endsWith('.' + domain) || hostname.includes(domain);
+  });
+}
+
+// Check if current site should be blocked based on sites.json configuration
+async function shouldBlockCurrentSite() {
+  const config = await loadSitesConfig();
+  const hostname = window.location.hostname;
+
+  // Check social media sites
+  if (config.socialMediaSites.enabled && config.socialMediaSites.sites) {
+    const enabledSocialSites = config.socialMediaSites.sites.filter(site => site.enabled !== false);
+    if (isHostnameInSites(hostname, enabledSocialSites)) {
+      return { shouldBlock: true, type: 'social', config: config.socialMediaSites };
+    }
+  }
+
+  // Check news sites
+  if (config.newsSites.enabled && config.newsSites.sites) {
+    if (isHostnameInSites(hostname, config.newsSites.sites)) {
+      return { shouldBlock: true, type: 'news', config: config.newsSites };
+    }
+  }
+
+  // Check custom sites
+  if (config.customSites.enabled && config.customSites.sites) {
+    if (isHostnameInSites(hostname, config.customSites.sites)) {
+      return { shouldBlock: true, type: 'custom', config: config.customSites };
+    }
+  }
+
+  return { shouldBlock: false, type: null };
+}
+
+// Check if current site is an AI site and if AI Think First is enabled
+async function isAISiteWithThinkFirstEnabled() {
+  const config = await loadSitesConfig();
+  const hostname = window.location.hostname;
+
+  if (!config.aiSites.enabled || !config.aiSites.sites) {
+    return false;
+  }
+
+  return isHostnameInSites(hostname, config.aiSites.sites);
+}
 
 // Get a random suggestion
 function getRandomSuggestion() {
@@ -1091,9 +1197,16 @@ function showReflectionModal() {
 }
 
 // Initialize for AI sites
-(function initializeAISiteHandlers() {
+(async function initializeAISiteHandlers() {
   try {
     console.log('Initializing AI site handlers...');
+
+    // Check if AI Think First feature is enabled before initializing
+    const isAIEnabled = await isAISiteWithThinkFirstEnabled();
+    if (!isAIEnabled) {
+      console.log('AI Think First feature disabled, skipping AI site initialization');
+      return;
+    }
     
     // Function to start initialization
     const startInit = () => {
@@ -1315,19 +1428,43 @@ function showReflectionModal() {
             
             // Check if this is a new conversation
             if (isNewConversation()) {
-              console.log(`Showing reminder for new conversation: ${chatId}`);
-              showReflectionModal();
-              
-              // Mark as shown in both session and storage
-              shownInChatsForSession.add(chatId);
-              saveShownChat(chatId);
-              
-              // Save updated stats to storage
-              storage.get('creativityGuardStats', function(result) {
-                const updatedStats = result ? result : { ...stats };
-                updatedStats.aiUsageCount++;
-                storage.set('creativityGuardStats', updatedStats);
-                stats = updatedStats;
+              // Check if AI Think First feature is enabled before showing modal
+              isAISiteWithThinkFirstEnabled().then(isEnabled => {
+                if (isEnabled) {
+                  console.log(`Showing reminder for new conversation: ${chatId}`);
+                  showReflectionModal();
+
+                  // Mark as shown in both session and storage
+                  shownInChatsForSession.add(chatId);
+                  saveShownChat(chatId);
+
+                  // Save updated stats to storage
+                  storage.get('creativityGuardStats', function(result) {
+                    const updatedStats = result ? result : { ...stats };
+                    updatedStats.aiUsageCount++;
+                    storage.set('creativityGuardStats', updatedStats);
+                    stats = updatedStats;
+                  });
+                } else {
+                  console.log(`AI Think First disabled, skipping reminder for: ${chatId}`);
+                }
+              }).catch(error => {
+                console.error('[Creativity Guard] Error checking AI Think First setting:', error);
+                // Default to showing modal if there's an error
+                console.log(`Showing reminder for new conversation (fallback): ${chatId}`);
+                showReflectionModal();
+
+                // Mark as shown in both session and storage
+                shownInChatsForSession.add(chatId);
+                saveShownChat(chatId);
+
+                // Save updated stats to storage
+                storage.get('creativityGuardStats', function(result) {
+                  const updatedStats = result ? result : { ...stats };
+                  updatedStats.aiUsageCount++;
+                  storage.set('creativityGuardStats', updatedStats);
+                  stats = updatedStats;
+                });
               });
             } else {
               console.log(`Not showing reminder for existing conversation: ${chatId}`);
@@ -1487,7 +1624,7 @@ const socialMediaModule = {
     enabledForMedia: true, // Enable blocking for media/news sites
     totalWeekendBlock: true, // Complete block on weekends by default
     vacationModeEnabled: false, // New setting for vacation mode
-    redirectUrl: 'https://read.readwise.io',
+    redirectUrl: 'https://weeatrobots.substack.com',
     visits: {}, // Will store dates of visits
     usageHistory: [] // Track bypass and disable events with timestamps
   },
@@ -1537,7 +1674,7 @@ const socialMediaModule = {
     this.initSessionConsent();
 
     // Load settings and then handle the site visit after settings are loaded
-    this.storage.get((settings) => {
+    this.storage.get(async (settings) => {
       try {
         // Remove early blocker once we have settings
         if (earlyBlockerElement && earlyBlockerElement.parentNode) {
@@ -1577,35 +1714,84 @@ const socialMediaModule = {
         // Now that settings are loaded, check if we're on a blocked site
         const hostname = window.location.hostname;
 
-        // Check social media sites
-        if (hostname.includes('linkedin.com')) {
-          console.log('%c[Creativity Guard] On LinkedIn, handling site visit', 'color: #0a66c2;');
-          this.handleSocialMediaSite('linkedin');
-        } else if (hostname.includes('twitter.com') || hostname.includes('x.com')) {
-          console.log('%c[Creativity Guard] On Twitter, handling site visit', 'color: #0a66c2;');
-          this.handleSocialMediaSite('twitter');
-        } else if (hostname.includes('facebook.com')) {
-          console.log('%c[Creativity Guard] On Facebook, handling site visit', 'color: #0a66c2;');
-          this.handleSocialMediaSite('facebook');
-        }
-        // Check media/news sites
-        else if (hostname.includes('theguardian.com') ||
-                 hostname.includes('nytimes.com') ||
-                 hostname.includes('washingtonpost.com') ||
-                 hostname.includes('bbc.com') ||
-                 hostname.includes('cnn.com') ||
-                 hostname.includes('reddit.com')) {
-          console.log('%c[Creativity Guard] On media site, handling visit', 'color: #0a66c2;');
-          // Get specific media site name for display
-          let mediaName = 'Media';
-          if (hostname.includes('theguardian.com')) mediaName = 'The Guardian';
-          else if (hostname.includes('nytimes.com')) mediaName = 'NY Times';
-          else if (hostname.includes('washingtonpost.com')) mediaName = 'Washington Post';
-          else if (hostname.includes('bbc.com')) mediaName = 'BBC';
-          else if (hostname.includes('cnn.com')) mediaName = 'CNN';
-          else if (hostname.includes('reddit.com')) mediaName = 'Reddit';
+        // Check if we're on a blocked site using sites.json configuration
+        try {
+          const blockResult = await shouldBlockCurrentSite();
 
-          this.handleSocialMediaSite('media', mediaName);
+          if (blockResult.shouldBlock) {
+            console.log(`%c[Creativity Guard] On ${blockResult.type} site, handling visit`, 'color: #0a66c2;');
+
+            // Determine platform and display name based on site type and hostname
+            let platform = blockResult.type;
+            let displayName = null;
+
+            if (blockResult.type === 'social') {
+              // For social media, determine specific platform
+              if (hostname.includes('linkedin.com')) {
+                platform = 'linkedin';
+                displayName = 'LinkedIn';
+              } else if (hostname.includes('twitter.com') || hostname.includes('x.com')) {
+                platform = 'twitter';
+                displayName = hostname.includes('x.com') ? 'X (Twitter)' : 'Twitter';
+              } else if (hostname.includes('facebook.com')) {
+                platform = 'facebook';
+                displayName = 'Facebook';
+              } else {
+                // Generic social media platform
+                displayName = 'Social Media';
+              }
+            } else if (blockResult.type === 'news') {
+              platform = 'media';
+              // Get specific news site name for display
+              if (hostname.includes('theguardian.com')) displayName = 'The Guardian';
+              else if (hostname.includes('nytimes.com')) displayName = 'NY Times';
+              else if (hostname.includes('washingtonpost.com')) displayName = 'Washington Post';
+              else if (hostname.includes('bbc.com')) displayName = 'BBC';
+              else if (hostname.includes('cnn.com')) displayName = 'CNN';
+              else if (hostname.includes('reddit.com')) displayName = 'Reddit';
+              else displayName = 'News Site';
+            } else if (blockResult.type === 'custom') {
+              platform = 'media'; // Treat custom sites like media sites
+              displayName = 'Custom Site';
+            }
+
+            await this.handleSocialMediaSite(platform, displayName);
+          } else {
+            console.log('%c[Creativity Guard] Site not configured for blocking', 'color: #0a66c2;');
+          }
+        } catch (error) {
+          console.error('%c[Creativity Guard] Error checking site blocking configuration:', 'color: #ff0000;', error);
+          // Fallback to legacy hardcoded check if sites.json fails
+          console.log('%c[Creativity Guard] Falling back to legacy site detection', 'color: #ff9800;');
+
+          // Legacy hardcoded site detection as fallback
+          if (hostname.includes('linkedin.com')) {
+            console.log('%c[Creativity Guard] On LinkedIn (legacy), handling site visit', 'color: #0a66c2;');
+            await this.handleSocialMediaSite('linkedin');
+          } else if (hostname.includes('twitter.com') || hostname.includes('x.com')) {
+            console.log('%c[Creativity Guard] On Twitter (legacy), handling site visit', 'color: #0a66c2;');
+            await this.handleSocialMediaSite('twitter');
+          } else if (hostname.includes('facebook.com')) {
+            console.log('%c[Creativity Guard] On Facebook (legacy), handling site visit', 'color: #0a66c2;');
+            await this.handleSocialMediaSite('facebook');
+          } else if (hostname.includes('theguardian.com') ||
+                     hostname.includes('nytimes.com') ||
+                     hostname.includes('washingtonpost.com') ||
+                     hostname.includes('bbc.com') ||
+                     hostname.includes('cnn.com') ||
+                     hostname.includes('reddit.com')) {
+            console.log('%c[Creativity Guard] On media site (legacy), handling visit', 'color: #0a66c2;');
+            // Get specific media site name for display
+            let mediaName = 'Media';
+            if (hostname.includes('theguardian.com')) mediaName = 'The Guardian';
+            else if (hostname.includes('nytimes.com')) mediaName = 'NY Times';
+            else if (hostname.includes('washingtonpost.com')) mediaName = 'Washington Post';
+            else if (hostname.includes('bbc.com')) mediaName = 'BBC';
+            else if (hostname.includes('cnn.com')) mediaName = 'CNN';
+            else if (hostname.includes('reddit.com')) mediaName = 'Reddit';
+
+            await this.handleSocialMediaSite('media', mediaName);
+          }
         }
       } catch (error) {
         console.error('%c[Creativity Guard] Error in init:', 'color: #ff0000;', error);
@@ -1643,18 +1829,31 @@ const socialMediaModule = {
   },
   
   // Check if current time is allowed for the platform
-  isAllowedTime: function(platform) {
+  isAllowedTime: async function(platform) {
     const now = new Date();
     const hour = now.getHours();
-    const allowedStartHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour :
-                            platform === 'twitter' ? this.settings.twitterAllowedHour :
-                            platform === 'facebook' ? this.settings.facebookAllowedHour :
-                            this.settings.mediaAllowedHour; // For media sites
-    
-    // Use configurable end hour from settings
-    const allowedEndHour = this.settings.allowedEndHour || 19; // Default to 7 PM if not set
-    
-    return hour >= allowedStartHour && hour < allowedEndHour;
+
+    try {
+      // Try to get settings from sites.json first
+      const config = await loadSitesConfig();
+      const allowedStartHour = config.settings.allowedAfterHour || 15;
+      const allowedEndHour = config.settings.allowedEndHour || 19;
+
+      return hour >= allowedStartHour && hour < allowedEndHour;
+    } catch (error) {
+      console.error('[Creativity Guard] Error loading time settings from sites.json:', error);
+
+      // Fallback to legacy settings
+      const allowedStartHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour :
+                              platform === 'twitter' ? this.settings.twitterAllowedHour :
+                              platform === 'facebook' ? this.settings.facebookAllowedHour :
+                              this.settings.mediaAllowedHour; // For media sites
+
+      // Use configurable end hour from settings
+      const allowedEndHour = this.settings.allowedEndHour || 19; // Default to 7 PM if not set
+
+      return hour >= allowedStartHour && hour < allowedEndHour;
+    }
   },
   
   // Check if already visited today
@@ -1799,7 +1998,7 @@ const socialMediaModule = {
   },
 
   // Handle social media site visit
-  handleSocialMediaSite: function(platform, displayName) {
+  handleSocialMediaSite: async function(platform, displayName) {
     try {
       console.log(`%c[Creativity Guard] Handling ${platform} visit`, 'color: #0a66c2;');
 
@@ -1818,24 +2017,24 @@ const socialMediaModule = {
                        platform === 'facebook' ? this.settings.enabledForFacebook :
                        this.settings.enabledForMedia; // For media sites
       console.log(`%c[Creativity Guard] Feature enabled for ${platform}:`, 'color: #0a66c2;', isEnabled);
-      
+
       if (!isEnabled) return;
-      
+
       // Check if user already gave consent for this session
       if (this.sessionConsent[platform]) {
         console.log(`%c[Creativity Guard] User already gave consent for ${platform} this session`, 'color: #0a66c2;');
         return;
       }
-      
+
       // Check if it's a weekend
       const isWeekendDay = this.isWeekend();
       console.log(`%c[Creativity Guard] Is weekend:`, 'color: #0a66c2;', isWeekendDay);
-      
+
       // Check time and previous visits
-      const isAllowedTime = this.isAllowedTime(platform);
+      const isAllowedTime = await this.isAllowedTime(platform);
       const hasVisited = this.hasVisitedToday(platform);
       console.log(`%c[Creativity Guard] Time allowed: ${isAllowedTime}, Has visited today: ${hasVisited}`, 'color: #0a66c2;');
-      
+
       // Determine if restriction modal should be shown based on weekend/time/visit
       const isTotalWeekendBlock = isWeekendDay && (this.settings.totalWeekendBlock !== undefined ? this.settings.totalWeekendBlock : true);
       const shouldShowModal = isTotalWeekendBlock || !isAllowedTime || hasVisited;
@@ -2272,10 +2471,23 @@ const socialMediaModule = {
 
       let messageText = '';
       const platformName = displayName || (platform.charAt(0).toUpperCase() + platform.slice(1));
-      const allowedHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour :
-                         platform === 'twitter' ? this.settings.twitterAllowedHour :
-                         platform === 'facebook' ? this.settings.facebookAllowedHour :
-                         this.settings.mediaAllowedHour;
+
+      // Use unified settings from sites.json if available, fallback to legacy
+      let allowedStartHour = 15; // Default
+      let allowedEndHour = 19;  // Default
+
+      // Try to get from sites.json synchronously from cache
+      if (sitesConfig && sitesConfig.settings) {
+        allowedStartHour = sitesConfig.settings.allowedAfterHour || 15;
+        allowedEndHour = sitesConfig.settings.allowedEndHour || 19;
+      } else {
+        // Fallback to legacy platform-specific settings
+        allowedStartHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour :
+                          platform === 'twitter' ? this.settings.twitterAllowedHour :
+                          platform === 'facebook' ? this.settings.facebookAllowedHour :
+                          this.settings.mediaAllowedHour;
+        allowedEndHour = this.settings.allowedEndHour || 19;
+      }
       
       // --- Determine Message Text ---
       if (isVacationMode) {
@@ -2287,17 +2499,20 @@ const socialMediaModule = {
 
         if (isTotalWeekendBlock) {
           messageText = `It's the weekend! ${platformName} access is currently blocked to help you disconnect. You can change this in extension settings.`;
-        } else if (!this.isAllowedTime(platform)) {
-          const allowedStartHour = platform === 'linkedin' ? this.settings.linkedinAllowedHour : 
-                                  platform === 'twitter' ? this.settings.twitterAllowedHour : 
-                                  this.settings.facebookAllowedHour;
-          const allowedEndHour = this.settings.allowedEndHour || 19;
-          messageText = `${platformName} is only available between ${allowedStartHour}:00 and ${allowedEndHour}:00. Consider focusing on deep work during other hours.`;
-        } else if (this.hasVisitedToday(platform)) {
-          messageText = `You've already visited ${platformName} today. Consider limiting your social media usage.`;
         } else {
-           // Fallback message if somehow modal is shown without a specific reason (shouldn't happen often)
-           messageText = `Please consider if now is the best time to visit ${platformName}.`;
+          // Check time using unified settings
+          const now = new Date();
+          const currentHour = now.getHours();
+          const isTimeAllowed = currentHour >= allowedStartHour && currentHour < allowedEndHour;
+
+          if (!isTimeAllowed) {
+            messageText = `${platformName} is only available between ${allowedStartHour}:00 and ${allowedEndHour}:00. Consider focusing on deep work during other hours.`;
+          } else if (this.hasVisitedToday(platform)) {
+            messageText = `You've already visited ${platformName} today. Consider limiting your social media usage.`;
+          } else {
+            // Fallback message if somehow modal is shown without a specific reason (shouldn't happen often)
+            messageText = `Please consider if now is the best time to visit ${platformName}.`;
+          }
         }
       }
       // --- End Determine Message Text ---
@@ -2376,7 +2591,13 @@ const socialMediaModule = {
         const isWeekendDay = this.isWeekend();
         const isTotalWeekendBlock = isWeekendDay && (this.settings.totalWeekendBlock !== undefined ? this.settings.totalWeekendBlock : true);
         if (isTotalWeekendBlock) return 'weekend';
-        if (!this.isAllowedTime(platform)) return 'outside_hours';
+
+        // Check time using the same unified settings we used above
+        const now = new Date();
+        const currentHour = now.getHours();
+        const isTimeAllowed = currentHour >= allowedStartHour && currentHour < allowedEndHour;
+        if (!isTimeAllowed) return 'outside_hours';
+
         if (this.hasVisitedToday(platform)) return 'already_visited';
         return 'unknown';
       };
@@ -2756,19 +2977,27 @@ const socialMediaModule = {
           modal.style.animation = 'modalFadeOut 0.3s ease-in forwards';
           setTimeout(() => {
             modal.remove();
-            const validatedUrl = validateAndSanitizeUrl(this.settings.redirectUrl || 'https://read.readwise.io');
+            // Try to get redirect URL from sites.json first, then fallback to legacy settings
+            let redirectUrl = 'https://weeatrobots.substack.com'; // Default
+            if (sitesConfig && sitesConfig.settings && sitesConfig.settings.redirectUrl) {
+              redirectUrl = sitesConfig.settings.redirectUrl;
+            } else if (this.settings.redirectUrl) {
+              redirectUrl = this.settings.redirectUrl;
+            }
+
+            const validatedUrl = validateAndSanitizeUrl(redirectUrl);
             
             // Additional safety check before redirecting
             if (validatedUrl && typeof validatedUrl === 'string' && validatedUrl.startsWith('http')) {
               window.location.href = validatedUrl;
             } else {
               console.error('Invalid redirect URL after validation:', validatedUrl);
-              window.location.href = 'https://read.readwise.io'; // Fallback
+              window.location.href = 'https://weeatrobots.substack.com'; // Fallback
             }
           }, 300);
         } catch (error) {
           console.error('Error during redirect:', error);
-          window.location.href = 'https://read.readwise.io'; // Safe fallback
+          window.location.href = 'https://weeatrobots.substack.com'; // Safe fallback
         }
       };
       skipButton.addEventListener('click', skipModalHandler);

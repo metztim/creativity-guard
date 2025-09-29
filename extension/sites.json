@@ -1,0 +1,101 @@
+{
+  "version": "1.0.0",
+  "aiSites": {
+    "enabled": false,
+    "sites": [
+      {
+        "domain": "chat.openai.com",
+        "name": "ChatGPT"
+      },
+      {
+        "domain": "chatgpt.com",
+        "name": "ChatGPT"
+      },
+      {
+        "domain": "claude.ai",
+        "name": "Claude"
+      },
+      {
+        "domain": "gemini.google.com",
+        "name": "Gemini"
+      },
+      {
+        "domain": "poe.com",
+        "name": "Poe"
+      },
+      {
+        "domain": "www.typingmind.com",
+        "name": "TypingMind"
+      },
+      {
+        "domain": "lex.page",
+        "name": "Lex"
+      }
+    ]
+  },
+  "socialMediaSites": {
+    "enabled": true,
+    "sites": [
+      {
+        "domain": "linkedin.com",
+        "name": "LinkedIn",
+        "enabled": true
+      },
+      {
+        "domain": "twitter.com",
+        "name": "Twitter",
+        "enabled": true
+      },
+      {
+        "domain": "x.com",
+        "name": "X (Twitter)",
+        "enabled": true
+      },
+      {
+        "domain": "facebook.com",
+        "name": "Facebook",
+        "enabled": true
+      }
+    ]
+  },
+  "newsSites": {
+    "enabled": false,
+    "sites": [
+      {
+        "domain": "theguardian.com",
+        "name": "The Guardian"
+      },
+      {
+        "domain": "nytimes.com",
+        "name": "NY Times"
+      },
+      {
+        "domain": "washingtonpost.com",
+        "name": "Washington Post"
+      },
+      {
+        "domain": "bbc.com",
+        "name": "BBC"
+      },
+      {
+        "domain": "cnn.com",
+        "name": "CNN"
+      },
+      {
+        "domain": "reddit.com",
+        "name": "Reddit"
+      }
+    ]
+  },
+  "customSites": {
+    "enabled": true,
+    "sites": []
+  },
+  "settings": {
+    "allowedAfterHour": 15,
+    "allowedEndHour": 19,
+    "redirectUrl": "https://weeatrobots.substack.com",
+    "vacationMode": false,
+    "totalWeekendBlock": false
+  }
+}

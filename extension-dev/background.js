@@ -28,7 +28,32 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       handleRecordExtensionDisable(sendResponse);
       return true; // Required for async response
     }
-    
+
+    if (request.type === 'GET_SITES_CONFIG') {
+      handleGetSitesConfig(sendResponse);
+      return true; // Required for async response
+    }
+
+    if (request.type === 'UPDATE_SITES_CONFIG') {
+      handleUpdateSitesConfig(request.config, sendResponse);
+      return true; // Required for async response
+    }
+
+    if (request.type === 'ADD_CUSTOM_SITE') {
+      handleAddCustomSite(request.site, sendResponse);
+      return true; // Required for async response
+    }
+
+    if (request.type === 'REMOVE_CUSTOM_SITE') {
+      handleRemoveCustomSite(request.domain, sendResponse);
+      return true; // Required for async response
+    }
+
+    if (request.type === 'OPEN_SITES_JSON') {
+      handleOpenSitesJson(sendResponse);
+      return true; // Required for async response
+    }
+
     // Handle unknown message types
     console.warn('Unknown message type received:', request.type);
     sendResponse({ error: 'Unknown message type', success: false });
@@ -184,7 +209,7 @@ function validateAndSanitizeSettingsForSave(settings) {
       vacationModeEnabled: { type: 'boolean', default: false },
       
       // String fields
-      redirectUrl: { type: 'string', default: 'https://read.readwise.io' }
+      redirectUrl: { type: 'string', default: 'https://weeatrobots.substack.com' }
     };
     
     // Process each field according to validation rules
@@ -418,4 +443,311 @@ self.addEventListener('error', (event) => {
 
 self.addEventListener('unhandledrejection', (event) => {
   console.error('Unhandled promise rejection in background script:', event.reason);
-}); 
+});
+
+// Sites.json handlers
+
+// Get sites configuration
+function handleGetSitesConfig(sendResponse) {
+  readSitesJson()
+    .then(config => {
+      if (config) {
+        sendResponse({ success: true, config });
+      } else {
+        // Return default configuration if sites.json is not available
+        sendResponse({ success: true, config: getDefaultSitesConfig() });
+      }
+    })
+    .catch(error => {
+      console.error('Error getting sites config:', error);
+      sendResponse({ error: 'Failed to read sites configuration', success: false });
+    });
+}
+
+// Update sites configuration
+function handleUpdateSitesConfig(config, sendResponse) {
+  if (!config || typeof config !== 'object') {
+    sendResponse({ error: 'Invalid configuration provided', success: false });
+    return;
+  }
+
+  writeSitesJson(config)
+    .then(() => {
+      // Sync changes to Chrome storage for backward compatibility
+      syncSitesToStorage(config);
+      sendResponse({ success: true });
+    })
+    .catch(error => {
+      console.error('Error updating sites config:', error);
+      sendResponse({ error: 'Failed to update sites configuration', success: false });
+    });
+}
+
+// Add custom site
+function handleAddCustomSite(site, sendResponse) {
+  if (!site || !site.domain || !site.name) {
+    sendResponse({ error: 'Invalid site data provided', success: false });
+    return;
+  }
+
+  readSitesJson()
+    .then(config => {
+      const sitesConfig = config || getDefaultSitesConfig();
+
+      // Check if site already exists
+      const existingSite = sitesConfig.customSites.sites.find(s => s.domain === site.domain);
+      if (existingSite) {
+        sendResponse({ error: 'Site already exists', success: false });
+        return;
+      }
+
+      // Add the new site
+      sitesConfig.customSites.sites.push({
+        domain: site.domain,
+        name: site.name,
+        enabled: site.enabled !== false // Default to true
+      });
+
+      return writeSitesJson(sitesConfig);
+    })
+    .then(() => {
+      sendResponse({ success: true });
+    })
+    .catch(error => {
+      console.error('Error adding custom site:', error);
+      sendResponse({ error: 'Failed to add custom site', success: false });
+    });
+}
+
+// Remove custom site
+function handleRemoveCustomSite(domain, sendResponse) {
+  if (!domain) {
+    sendResponse({ error: 'Domain not provided', success: false });
+    return;
+  }
+
+  readSitesJson()
+    .then(config => {
+      const sitesConfig = config || getDefaultSitesConfig();
+
+      // Find and remove the site
+      const initialLength = sitesConfig.customSites.sites.length;
+      sitesConfig.customSites.sites = sitesConfig.customSites.sites.filter(s => s.domain !== domain);
+
+      if (sitesConfig.customSites.sites.length === initialLength) {
+        sendResponse({ error: 'Site not found', success: false });
+        return;
+      }
+
+      return writeSitesJson(sitesConfig);
+    })
+    .then(() => {
+      sendResponse({ success: true });
+    })
+    .catch(error => {
+      console.error('Error removing custom site:', error);
+      sendResponse({ error: 'Failed to remove custom site', success: false });
+    });
+}
+
+// Open sites.json in a new tab for editing
+function handleOpenSitesJson(sendResponse) {
+  try {
+    const sitesJsonUrl = chrome.runtime.getURL('sites.json');
+    chrome.tabs.create({ url: sitesJsonUrl }, (tab) => {
+      if (chrome.runtime.lastError) {
+        console.error('Error opening sites.json:', chrome.runtime.lastError);
+        sendResponse({ error: 'Failed to open sites.json', success: false });
+      } else {
+        sendResponse({ success: true, tabId: tab.id });
+      }
+    });
+  } catch (error) {
+    console.error('Error opening sites.json:', error);
+    sendResponse({ error: 'Failed to open sites.json', success: false });
+  }
+}
+
+// Read sites.json file
+async function readSitesJson() {
+  try {
+    const response = await fetch(chrome.runtime.getURL('sites.json'));
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const config = await response.json();
+    return validateSitesConfig(config);
+  } catch (error) {
+    console.error('Error reading sites.json:', error);
+    return null;
+  }
+}
+
+// Write sites.json file (Note: Extensions cannot write to their own files)
+// This function exists for API consistency but will always fail
+async function writeSitesJson(config) {
+  // Chrome extensions cannot write to their own files in the extension directory
+  // This would require a different approach like downloading the file or using a web service
+  console.warn('Writing to sites.json is not supported in Chrome extensions');
+
+  // Instead, we'll sync to Chrome storage as a fallback
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.set({ sitesConfig: config }, () => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+      } else {
+        console.log('Sites config saved to Chrome storage as fallback');
+        resolve();
+      }
+    });
+  });
+}
+
+// Validate sites configuration
+function validateSitesConfig(config) {
+  if (!config || typeof config !== 'object') {
+    return null;
+  }
+
+  // Ensure required structure exists
+  const validatedConfig = {
+    version: config.version || '1.0.0',
+    aiSites: validateSiteCategory(config.aiSites),
+    socialMediaSites: validateSiteCategory(config.socialMediaSites),
+    newsSites: validateSiteCategory(config.newsSites),
+    customSites: validateSiteCategory(config.customSites),
+    settings: validateSettings(config.settings)
+  };
+
+  return validatedConfig;
+}
+
+// Validate site category
+function validateSiteCategory(category) {
+  if (!category || typeof category !== 'object') {
+    return { enabled: false, sites: [] };
+  }
+
+  return {
+    enabled: Boolean(category.enabled),
+    sites: Array.isArray(category.sites) ? category.sites.filter(site =>
+      site && typeof site === 'object' && site.domain && site.name
+    ) : []
+  };
+}
+
+// Validate settings
+function validateSettings(settings) {
+  if (!settings || typeof settings !== 'object') {
+    return getDefaultSettings();
+  }
+
+  return {
+    allowedAfterHour: Number.isInteger(settings.allowedAfterHour) && settings.allowedAfterHour >= 0 && settings.allowedAfterHour <= 23
+      ? settings.allowedAfterHour : 15,
+    allowedEndHour: Number.isInteger(settings.allowedEndHour) && settings.allowedEndHour >= 0 && settings.allowedEndHour <= 23
+      ? settings.allowedEndHour : 19,
+    redirectUrl: typeof settings.redirectUrl === 'string' && isValidUrl(settings.redirectUrl)
+      ? settings.redirectUrl : 'https://weeatrobots.substack.com',
+    vacationMode: Boolean(settings.vacationMode),
+    totalWeekendBlock: Boolean(settings.totalWeekendBlock)
+  };
+}
+
+// Get default settings
+function getDefaultSettings() {
+  return {
+    allowedAfterHour: 15,
+    allowedEndHour: 19,
+    redirectUrl: 'https://weeatrobots.substack.com',
+    vacationMode: false,
+    totalWeekendBlock: false
+  };
+}
+
+// Get default sites configuration
+function getDefaultSitesConfig() {
+  return {
+    version: '1.0.0',
+    aiSites: {
+      enabled: false,
+      sites: [
+        { domain: 'chat.openai.com', name: 'ChatGPT' },
+        { domain: 'chatgpt.com', name: 'ChatGPT' },
+        { domain: 'claude.ai', name: 'Claude' },
+        { domain: 'gemini.google.com', name: 'Gemini' },
+        { domain: 'poe.com', name: 'Poe' },
+        { domain: 'www.typingmind.com', name: 'TypingMind' },
+        { domain: 'lex.page', name: 'Lex' }
+      ]
+    },
+    socialMediaSites: {
+      enabled: true,
+      sites: [
+        { domain: 'linkedin.com', name: 'LinkedIn', enabled: true },
+        { domain: 'twitter.com', name: 'Twitter', enabled: true },
+        { domain: 'x.com', name: 'X (Twitter)', enabled: true },
+        { domain: 'facebook.com', name: 'Facebook', enabled: true }
+      ]
+    },
+    newsSites: {
+      enabled: false,
+      sites: [
+        { domain: 'theguardian.com', name: 'The Guardian' },
+        { domain: 'nytimes.com', name: 'NY Times' },
+        { domain: 'washingtonpost.com', name: 'Washington Post' },
+        { domain: 'bbc.com', name: 'BBC' },
+        { domain: 'cnn.com', name: 'CNN' },
+        { domain: 'reddit.com', name: 'Reddit' }
+      ]
+    },
+    customSites: {
+      enabled: true,
+      sites: []
+    },
+    settings: getDefaultSettings()
+  };
+}
+
+// Sync sites configuration to Chrome storage for backward compatibility
+function syncSitesToStorage(config) {
+  if (!config || !config.settings) {
+    return;
+  }
+
+  // Map sites.json settings to existing storage format
+  const socialMediaSettings = {
+    linkedinAllowedHour: config.settings.allowedAfterHour,
+    twitterAllowedHour: config.settings.allowedAfterHour,
+    facebookAllowedHour: config.settings.allowedAfterHour,
+    allowedEndHour: config.settings.allowedEndHour,
+    redirectUrl: config.settings.redirectUrl,
+    vacationModeEnabled: config.settings.vacationMode,
+    totalWeekendBlock: config.settings.totalWeekendBlock,
+    enabledForLinkedin: config.socialMediaSites.enabled &&
+      config.socialMediaSites.sites.some(s => s.domain === 'linkedin.com' && s.enabled !== false),
+    enabledForTwitter: config.socialMediaSites.enabled &&
+      config.socialMediaSites.sites.some(s => (s.domain === 'twitter.com' || s.domain === 'x.com') && s.enabled !== false),
+    enabledForFacebook: config.socialMediaSites.enabled &&
+      config.socialMediaSites.sites.some(s => s.domain === 'facebook.com' && s.enabled !== false),
+    visits: {} // Preserve existing visits data
+  };
+
+  // Get existing settings to preserve visits data
+  chrome.storage.local.get(['creativityGuardSocialMedia'], (result) => {
+    if (result.creativityGuardSocialMedia && result.creativityGuardSocialMedia.visits) {
+      socialMediaSettings.visits = result.creativityGuardSocialMedia.visits;
+    }
+    if (result.creativityGuardSocialMedia && result.creativityGuardSocialMedia.usageHistory) {
+      socialMediaSettings.usageHistory = result.creativityGuardSocialMedia.usageHistory;
+    }
+
+    chrome.storage.local.set({ creativityGuardSocialMedia: socialMediaSettings }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('Error syncing sites to storage:', chrome.runtime.lastError);
+      } else {
+        console.log('Sites configuration synced to Chrome storage');
+      }
+    });
+  });
+} 
