@@ -2495,7 +2495,7 @@ const socialMediaModule = {
           }
           
           #social-media-modal #skip::before {
-            content: '📚';
+            content: '';
           }
           
           /* Responsive design */
@@ -2953,8 +2953,8 @@ const socialMediaModule = {
       // Create bypass button (always shown now)
       const bypassButton = document.createElement('button');
       bypassButton.id = 'bypass';
-      bypassButton.textContent = 'Bypass Blockade';
-      bypassButton.setAttribute('aria-label', 'Bypass the blockade with accountability');
+      bypassButton.textContent = 'Bypass Guard';
+      bypassButton.setAttribute('aria-label', 'Bypass the guard with accountability');
       bypassButton.setAttribute('title', 'Provide a reason to bypass (Enter)');
       bypassButton.style.cssText = `
         padding: 14px 28px;
@@ -3047,9 +3047,9 @@ const socialMediaModule = {
       
       const skipButton = document.createElement('button');
       skipButton.id = 'skip';
-      skipButton.textContent = 'Go to Reading';
-      skipButton.setAttribute('aria-label', 'Go to reading material instead');
-      skipButton.setAttribute('title', 'Redirect to reading material (Escape)');
+      skipButton.textContent = '✨ Get Inspired Instead';
+      skipButton.setAttribute('aria-label', 'Get inspired at your chosen redirect site');
+      skipButton.setAttribute('title', 'Redirect to your inspiration site (Escape)');
       const skipModalHandler = () => {
         try {
           // Keep the page hidden during redirect to prevent any flash
@@ -3171,6 +3171,13 @@ const socialMediaModule = {
       // Also try the element reference
       if (earlyBlockerElement && earlyBlockerElement.parentNode) {
         earlyBlockerElement.remove();
+      }
+
+      // IMPORTANT: Remove the CSS that's hiding the page
+      // The modal has its own overlay so we don't need to hide the page anymore
+      const hideStyle = document.getElementById('creativity-guard-hide-flash');
+      if (hideStyle) {
+        hideStyle.remove();
       }
 
       // Focus management for accessibility

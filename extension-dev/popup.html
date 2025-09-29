@@ -470,46 +470,12 @@
   
   <div class="tab-container">
     <div class="tab-buttons">
-      <button class="tab-button active" data-tab="social-media">Social Media</button>
-      <button class="tab-button" data-tab="ai-stats">AI Stats (Experimental)</button>
-      <button class="tab-button" data-tab="extension-tracking">Extension</button>
+      <button class="tab-button active" data-tab="site-blocking">Site Blocking</button>
+      <button class="tab-button" data-tab="ai-guard">AI Guard (Alpha)</button>
+      <button class="tab-button" data-tab="stats">Stats</button>
     </div>
 
-    <div id="social-media" class="tab-content active">
-      <div class="setting-card">
-        <label class="checkbox-label">
-          <input type="checkbox" id="enableAIThinkFirst" aria-describedby="ai-think-first-help">
-          Enable "Think First" reminders for AI tools
-        </label>
-        <div class="helper-text" id="ai-think-first-help">When enabled, shows a reminder to think independently before using AI tools (Experimental feature)</div>
-      </div>
-
-      <div class="stats-container">
-        <div class="stat-item">
-          <div class="stat-label">AI Usage Attempts</div>
-          <div class="stat-value" id="ai-usage-count">0</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-label">Thought First</div>
-          <div class="stat-value" id="thought-first-count">0</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-label">Bypassed Check</div>
-          <div class="stat-value" id="bypass-count">0</div>
-        </div>
-
-        <div class="ratio" id="success-ratio">
-          You thought first on 0% of your AI interactions
-        </div>
-      </div>
-      
-      <button class="reset-button" id="reset-stats" tabindex="0" role="button" aria-label="Reset all statistics">
-        <span class="hidden spinner" id="reset-spinner"></span>
-        Reset Stats
-      </button>
-    </div>
-
-    <div id="ai-stats" class="tab-content">
+    <div id="site-blocking" class="tab-content active">
       <div class="setting-card">
         <h2 class="settings-title">Sites to Block</h2>
 
@@ -540,9 +506,9 @@
           <button id="edit-sites-json" style="margin-top: 10px; padding: 8px 12px; background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer; font-size: 13px;">📝 Edit sites.json directly</button>
         </div>
       </div>
-      
-      <div class="setting-card">
-        <h2 class="settings-title">Time Restrictions</h2>
+
+      <div class="setting-card" style="background: linear-gradient(135deg, #f9fafb, #f3f4f6); border: 2px solid #e5e7eb;">
+        <h2 class="settings-title">Schedule & Restrictions</h2>
 
         <div class="setting-item">
           <label for="allowedAfterTime" class="setting-label">Allowed after:</label>
@@ -557,24 +523,20 @@
           <div class="error-message" id="allowedEndTime-error" role="alert"></div>
           <div class="helper-text" id="allowedEndTime-help">Sites are blocked again after this time (hard block, no "Continue" option)</div>
         </div>
-        
+
         <div class="setting-item">
           <label class="checkbox-label">
             <input type="checkbox" id="totalWeekendBlock" aria-describedby="weekend-help">
             Block completely on weekends
           </label>
         </div>
-        
+
         <div class="setting-item">
           <label class="checkbox-label">
             <input type="checkbox" id="vacationMode" aria-describedby="vacation-help">
             Vacation Mode (Indefinite Weekend Block)
           </label>
         </div>
-      </div>
-      
-      <div class="setting-card">
-        <h2 class="settings-title">Redirect Settings</h2>
 
         <div class="setting-item">
           <label for="redirectUrl" class="setting-label">Redirect URL:</label>
@@ -618,7 +580,52 @@
       </button>
     </div>
 
-    <div id="extension-tracking" class="tab-content">
+    <div id="ai-guard" class="tab-content">
+      <div style="background: linear-gradient(135deg, #fef3c7, #fed7aa); border: 2px solid #f59e0b; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px;">
+        <p style="margin: 0; color: #92400e; font-weight: 600; font-size: 14px;">
+          🚧 <strong>Alpha Feature</strong> - This feature is in active development and may change
+        </p>
+      </div>
+
+      <div class="setting-card">
+        <h2 class="settings-title">Protection Settings</h2>
+        <label class="checkbox-label">
+          <input type="checkbox" id="enableAIThinkFirst" aria-describedby="ai-think-first-help">
+          Enable "Think First" reminders for AI tools
+        </label>
+        <div class="helper-text" id="ai-think-first-help">When enabled, shows a reminder to think independently before using AI tools. This experimental feature helps you develop critical thinking habits.</div>
+      </div>
+
+      <div class="setting-card">
+        <h2 class="settings-title">AI Usage Statistics</h2>
+
+        <div class="stats-container">
+          <div class="stat-item">
+            <div class="stat-label">AI Usage Attempts</div>
+            <div class="stat-value" id="ai-usage-count">0</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Thought First</div>
+            <div class="stat-value" id="thought-first-count">0</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Bypassed Check</div>
+            <div class="stat-value" id="bypass-count">0</div>
+          </div>
+
+          <div class="ratio" id="success-ratio">
+            No AI interactions yet
+          </div>
+        </div>
+      </div>
+
+      <button class="reset-button" id="reset-stats" tabindex="0" role="button" aria-label="Reset AI usage statistics">
+        <span class="hidden spinner" id="reset-spinner"></span>
+        Reset AI Stats
+      </button>
+    </div>
+
+    <div id="stats" class="tab-content">
       <div class="stats-container">
         <h2 class="stats-title">Extension Usage Patterns</h2>
 

@@ -281,19 +281,19 @@ window.addEventListener('unload', () => PopupCleanup.cleanup());
 
 // Load stats when popup opens
 document.addEventListener('DOMContentLoaded', function() {
-  // Set up tab navigation with Social Media tab active by default
+  // Set up tab navigation with Site Blocking tab active by default
   setupTabs();
-
-  // Load AI stats
-  loadAIStats();
 
   // Load settings from sites.json and Chrome storage
   loadAllSettings();
 
-  // Load bypass statistics
+  // Load bypass statistics for Site Blocking tab (default tab)
   loadBypassStatistics();
 
-  // Load extension tracking stats
+  // Load AI stats (will be loaded on demand when AI Guard tab is selected)
+  loadAIStats();
+
+  // Load extension tracking stats (will be loaded on demand when Stats tab is selected)
   loadExtensionTrackingStats();
 
   // Set up buttons
@@ -308,15 +308,15 @@ document.addEventListener('DOMContentLoaded', function() {
 function setupTabs() {
   const tabButtons = document.querySelectorAll('.tab-button');
 
-  // Ensure Social Media tab is active by default
+  // Ensure Site Blocking tab is active by default
   document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
 
-  const socialMediaTab = document.querySelector('[data-tab="social-media"]');
-  const socialMediaContent = document.getElementById('social-media');
-  if (socialMediaTab && socialMediaContent) {
-    socialMediaTab.classList.add('active');
-    socialMediaContent.classList.add('active');
+  const siteBlockingTab = document.querySelector('[data-tab="site-blocking"]');
+  const siteBlockingContent = document.getElementById('site-blocking');
+  if (siteBlockingTab && siteBlockingContent) {
+    siteBlockingTab.classList.add('active');
+    siteBlockingContent.classList.add('active');
   }
 
   tabButtons.forEach(button => {
@@ -335,12 +335,11 @@ function setupTabs() {
       document.getElementById(tabId).classList.add('active');
 
       // Reload statistics when switching to relevant tabs
-      if (tabId === 'social-media') {
+      if (tabId === 'site-blocking') {
+        loadBypassStatistics();
+      } else if (tabId === 'ai-guard') {
         loadAIStats();
-        loadBypassStatistics();
-      } else if (tabId === 'ai-stats') {
-        loadBypassStatistics();
-      } else if (tabId === 'extension-tracking') {
+      } else if (tabId === 'stats') {
         loadExtensionTrackingStats();
       }
     };
