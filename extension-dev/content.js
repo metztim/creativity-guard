@@ -3003,11 +3003,14 @@ const socialMediaModule = {
                 // Show the reason bar to keep the reason visible
                 this.showReasonBar(reason, platform);
 
+                // Set session consent IMMEDIATELY to prevent modal from showing on next page
+                // This must happen before animation delay to handle quick page navigations
+                this.sessionConsent[platform] = true;
+                this.saveSessionConsent(); // Save to sessionStorage
+
                 // Animate out before proceeding
                 modal.style.animation = 'modalFadeOut 0.3s ease-in forwards';
                 setTimeout(() => {
-                  this.sessionConsent[platform] = true;
-                  this.saveSessionConsent(); // Save to sessionStorage
                   modal.remove();
                   // Also ensure early blocker is removed
                   if (earlyBlockerElement && earlyBlockerElement.parentNode) {

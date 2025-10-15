@@ -265,7 +265,7 @@ function validateAndSanitizeSettingsForSave(settings) {
       sanitized.visits = {};
       // Validate each visit entry
       for (const [platform, date] of Object.entries(settings.visits)) {
-        if (typeof platform === 'string' && typeof date === 'string' && 
+        if (typeof platform === 'string' && typeof date === 'string' &&
             ['linkedin', 'twitter', 'facebook'].includes(platform) &&
             /^\d{4}-\d{2}-\d{2}$/.test(date)) {
           sanitized.visits[platform] = date;
@@ -274,7 +274,37 @@ function validateAndSanitizeSettingsForSave(settings) {
     } else {
       sanitized.visits = {};
     }
-    
+
+    // Copy usageHistory array if present (with validation)
+    // This tracks bypass and disable events for the stats display
+    if (settings.usageHistory && Array.isArray(settings.usageHistory)) {
+      sanitized.usageHistory = [];
+      // Validate each history entry
+      const now = Date.now();
+      const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000);
+
+      for (const entry of settings.usageHistory) {
+        if (entry &&
+            typeof entry === 'object' &&
+            typeof entry.timestamp === 'number' &&
+            typeof entry.action === 'string' &&
+            ['bypass', 'disabled'].includes(entry.action) &&
+            entry.timestamp > twentyFourHoursAgo) {
+          // Keep only entries from the last 24 hours
+          sanitized.usageHistory.push({
+            timestamp: entry.timestamp,
+            action: entry.action,
+            // Preserve optional fields if present
+            ...(entry.reason && { reason: String(entry.reason) }),
+            ...(entry.platform && { platform: String(entry.platform) }),
+            ...(entry.blockType && { blockType: String(entry.blockType) })
+          });
+        }
+      }
+    } else {
+      sanitized.usageHistory = [];
+    }
+
     return sanitized;
   } catch (error) {
     console.error('Error validating settings:', error);
