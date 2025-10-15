@@ -176,6 +176,21 @@ const CreativityGuardCleanup = {
     this.eventListeners.get(element).push({ type: eventType, handler });
   },
 
+  // Track an element for cleanup
+  trackElement: function(element) {
+    // Add a cleanup callback to remove this element if it still exists
+    this.addCleanupCallback(() => {
+      if (element && element.parentNode) {
+        try {
+          element.remove();
+        } catch (e) {
+          console.warn('Error removing tracked element:', e);
+        }
+      }
+    });
+    return element;
+  },
+
   // Add a cleanup callback
   addCleanupCallback: function(callback) {
     this.cleanupCallbacks.add(callback);

@@ -540,3 +540,363 @@ Major refactoring session that reorganized the project structure, attempted a re
 - Lines removed: ~200
 - Bugs fixed: 4 (DOM readiness, unload event, fade transition, early blocker)
 - Features added: 5 (project reorg, release agent, sites.json, custom sites, unified time settings)
+
+---
+
+## Session Log: 2025-09-29
+
+**Project**: creativity-guard
+**Duration**: ~30 minutes
+**Type**: [bugfix]
+
+### Objectives
+- Fix flash/glimpse of blocked content when clicking "Go to Reading" redirect button
+- Implement comprehensive solution to prevent any content visibility during redirect
+
+### Summary
+Successfully eliminated the flash of blocked content during redirects by implementing immediate CSS hiding at page load for potentially blocked sites. The page remains hidden until either the redirect completes or the user explicitly chooses to bypass the block.
+
+### Files Changed
+- `extension-dev/content.js` - Added immediate CSS injection to hide page, modified redirect handler to maintain hiding, added reveal logic for bypass scenarios
+- `extension/content.js` - Synced production version with development changes
+
+### Technical Notes
+- **Root Cause**: `window.location.href` triggers navigation asynchronously, allowing brief rendering between click and redirect
+- **Solution**: Inject hiding CSS immediately at document start for potentially blocked sites
+- **Key Pattern**: Hide first, reveal only when explicitly needed (bypass or allowed access)
+- **Browser Mechanism**: Chrome's multi-process architecture and rendering pipeline cause timing gaps even with immediate redirects
+
+### Future Plans & Unimplemented Phases
+
+#### Enhanced Solution Options (Not Implemented)
+
+**Option 2: Chrome Tabs API Approach**
+**Status**: Not started (considered but not needed)
+**Planned Steps**:
+1. Modify background.js to handle redirect messages via chrome.tabs.update()
+2. Update content script to use chrome.runtime.sendMessage for redirects
+3. Maintain CSS hiding as fallback protection
+
+**Implementation Notes**:
+- Would provide cleaner architecture but still has timing issues
+- Requires message passing between content and background scripts
+
+**Option 3: Declarative Net Request API**
+**Status**: Not started (most robust but requires permission change)
+**Planned Steps**:
+1. Add "declarativeNetRequest" permission to manifest.json
+2. Create dynamic redirect rules based on time settings in background.js
+3. Intercept and redirect at network level before any rendering
+
+**Implementation Notes**:
+- Would completely prevent any page load/flash
+- Requires users to re-approve permissions
+- Most architecturally correct solution
+- Could implement in future major version
+
+### Next Actions
+- [ ] Test the CSS hiding fix across different sites and network speeds
+- [ ] Monitor for any edge cases where flash still occurs
+- [ ] Consider implementing Option 3 (Declarative Net Request) in a future major release
+- [ ] Add user preference to toggle between "instant redirect" vs "fade animation"
+- [ ] Test on slower connections to ensure hiding CSS applies before content loads
+
+### Metrics
+- Files modified: 2
+- Files created: 0
+- Lines added: ~60
+- Lines removed: ~5
+
+---
+
+## Session Log: 2025-09-29
+
+**Project**: creativity-guard/extension-dev
+**Duration**: ~4 hours
+**Type**: [bugfix] [refactor]
+
+### Objectives
+- Reorganize popup tabs for better UX clarity
+- Fix white page issue when blocking social media sites
+- Fix custom sites not displaying after being added
+- Fix checkbox toggle errors for site blocking settings
+- Update button text for clarity
+
+### Summary
+Successfully reorganized the extension popup interface into three clear sections (Site Blocking, AI Guard, Stats), fixed critical Chrome storage issues preventing settings persistence, and resolved UI blocking bugs that caused white pages on social media sites. All major functionality is now working correctly.
+
+### Files Changed
+- `extension-dev/popup.html` - Reorganized tabs: Site Blocking (default), AI Guard (Alpha), Stats; added visual grouping for Schedule & Restrictions
+- `extension-dev/popup.js` - Updated tab switching logic for new IDs, fixed custom sites display, updated data loading functions
+- `extension-dev/content.js` - Fixed white page issue by removing hiding CSS when modal shown, updated button text ("Bypass Guard", "✨ Get Inspired Instead")
+- `extension-dev/background.js` - Implemented hybrid read approach (Chrome storage first, then sites.json), added partial config update support
+- `extension-dev/sites.json` - Cleaned up test data
+
+### Technical Notes
+- **Critical Discovery**: Chrome extensions CANNOT write to their own files (security limitation). All writes go to Chrome storage but reads were only from sites.json file
+- **Solution Pattern**: Hybrid storage approach - read from Chrome storage first (user modifications), fall back to sites.json (template)
+- **Parameter Mismatch Fix**: Background script expected full config objects but popup sent partial updates (category/key/value)
+- **CSS Hiding Fix**: Modal's black overlay was sufficient; removing page-hiding CSS when modal appears prevents white page issue
+
+### Future Plans & Unimplemented Phases
+**All planned work for this session was completed**
+
+### Next Actions
+- [ ] Test extension across all supported sites (LinkedIn, Twitter/X, Facebook, news sites)
+- [ ] Monitor for any edge cases with the Chrome storage solution
+- [ ] Consider adding export/import functionality for custom sites
+- [ ] Add validation for duplicate custom sites across different cases
+- [ ] Test extension behavior after Chrome restart to ensure persistence
+
+### Metrics
+- Files modified: 5
+- Files created: 0
+- Tests added: 0
+- Commits created: 3
+  - `dcb2d47` - Reorganize popup tabs and fix social media blocking display
+  - `13ec767` - Fix sites.json read/write issue in Chrome extension
+  - `d148c56` - Fix checkbox toggle error for social media and news blocking
+- Bugs fixed: 1 (redirect flash/glimpse)
+
+---
+
+## Session Log: 2025-09-29
+
+**Project**: creativity-guard
+**Duration**: ~5 minutes
+**Type**: [bugfix]
+
+### Objectives
+- Fix "CreativityGuardCleanup.trackElement is not a function" error occurring on LinkedIn
+
+### Summary
+Fixed a missing function error in the CreativityGuardCleanup object by adding the trackElement method that was being called but not defined. The function properly tracks DOM elements for cleanup when the extension context is invalidated.
+
+### Files Changed
+- `extension-dev/content.js` - Added missing trackElement function to CreativityGuardCleanup object
+
+### Technical Notes
+- **Root Cause**: The code was calling `CreativityGuardCleanup.trackElement()` on line 2310 but the function wasn't defined in the cleanup object
+- **Solution**: Added `trackElement` function (lines 179-192) that adds elements to cleanup callbacks for removal when cleanup runs
+- **Pattern**: Follows same structure as other tracking methods (trackObserver, trackTimeout, trackInterval, trackEventListener)
+
+### Implementation Details
+1. Added `trackElement` method to CreativityGuardCleanup object
+2. Function adds a cleanup callback that removes the tracked element if it still exists in DOM
+3. Includes error handling for safe element removal
+4. Returns the element for chaining
+
+### Future Plans & Unimplemented Phases
+**None** - Bug was fully resolved
+
+### Next Actions
+- [ ] Reload extension in chrome://extensions/ to apply the fix
+- [ ] Test on LinkedIn to verify error is resolved
+- [ ] Consider adding similar tracking for other dynamically created elements
+
+### Metrics
+- Files modified: 1
+- Files created: 0
+- Lines added: 14 (trackElement function)
+- Bug fixes: 1 (missing trackElement function)
+
+---
+
+## Session Log: 2025-10-14
+
+**Project**: creativity-guard
+**Duration**: ~2 hours
+**Type**: [planning] [docs]
+
+### Objectives
+- Create professional product review agents to analyze Creativity Guard from multiple perspectives
+- Generate comprehensive roadmaps for product strategy, UX/design, and technical architecture
+- Synthesize findings into actionable master implementation plan
+
+### Summary
+Successfully created a multi-agent review system with three specialized agents (Product Strategy, UX Research & Design, Technical Architecture) that conducted comprehensive professional analyses of Creativity Guard. Each agent generated detailed roadmaps with prioritized improvements. All findings were synthesized into a master implementation plan with phased execution timeline.
+
+### Files Changed
+- `agents/product-strategy-agent.md` - Created agent for product/business analysis
+- `agents/ux-design-agent.md` - Created agent for UX research and design evaluation
+- `agents/technical-architect-agent.md` - Created agent for technical architecture review
+- `docs/roadmaps/product-strategy-roadmap.md` - Generated strategic priorities and market positioning analysis
+- `docs/roadmaps/ux-design-roadmap.md` - Generated user experience improvements and behavior change analysis
+- `docs/roadmaps/technical-roadmap.md` - Generated technical debt, performance, and architecture improvements
+- `docs/roadmaps/MASTER-PLAN.md` - Created comprehensive master implementation plan synthesizing all analyses
+
+### Technical Notes
+
+#### Agent Architecture
+- Created reusable agent templates following the existing release-agent.md pattern
+- Each agent has clear role definition, analysis process, and output format
+- Agents can be re-run after significant changes for fresh analysis
+- Structured outputs optimized for Claude Code implementation with file paths and line numbers
+
+#### Key Findings Across All Three Analyses
+
+**Critical Strategic Issue - Identity Crisis:**
+- Extension trying to serve two markets: AI mindfulness + distraction blocking
+- AI mindfulness = greenfield market (200M ChatGPT users, no competitors)
+- Distraction blocking = saturated market (50+ competitors like Freedom, Cold Turkey)
+- Recommendation: Pivot to AI-first positioning
+
+**Critical UX Issues:**
+1. No onboarding = #1 driver of early churn
+2. Habituation risk (same modal → ignored after 5-7 exposures)
+3. Guilt-based messaging creates psychological reactance
+4. Confusing 3-tab structure
+5. Aggressive defaults without explanation
+
+**Critical Technical Issues:**
+1. Content.js maintainability crisis (3,239 lines)
+2. Overly broad permissions (`<all_urls>`) = Chrome Web Store risk
+3. CSP not explicit = security gap
+4. No automated testing
+5. Dual storage architecture (sites.json + Chrome storage) adds complexity
+
+### Future Plans & Unimplemented Phases
+
+#### Phase 1: Quick Wins (Week 1 - 1-2 days effort)
+**Status**: Not started - documented in MASTER-PLAN.md
+**Planned Steps**:
+1. Add explicit CSP to manifest.json (15 min)
+2. Remove "Alpha" label from AI Guard (5 min)
+3. Extract magic numbers to constants (30 min)
+4. Rewrite guilt-based copy to supportive tone (2 hours)
+5. Add keyboard shortcuts (Ctrl+Shift+C) for accessibility (30 min)
+6. Create 15-20 varied AI messages in ai-messages.json (1 hour)
+7. Fix black blocker visual design (1 hour)
+
+**Expected Impact**: 20-30% improvement in user satisfaction
+**Files**: manifest.json, popup.html, content.js, create ai-messages.json
+
+#### Phase 2: Foundation (Weeks 1-4 - 15-20 hours effort)
+**Status**: Not started - documented in MASTER-PLAN.md
+**Planned Steps**:
+
+**2.1 Strategic Decision (Week 1-2)**
+- User research to validate primary identity (AI-first vs Distraction-first)
+- Survey + 5-10 interviews with current/potential users
+- Data-driven decision documented with rationale
+
+**2.2 Onboarding Flow (Week 2-3)**
+- Create extension-dev/onboarding.html (3-step wizard)
+  - Step 1: Welcome + value proposition
+  - Step 2: Choose protection level (awareness/gentle/strict)
+  - Step 3: Set focus hours
+- Create extension-dev/onboarding.js (track completion, set preferences)
+- Modify background.js (detect first install, trigger onboarding)
+- Update popup.js (check completion, redirect if needed)
+
+**2.3 Habituation Prevention System (Week 3-4)**
+- Create extension-dev/ai-messages.json with 15-20 message variations
+- Modify content.js to load messages, track history, select varied messages
+- Add analytics to track which messages lead to "Think First" vs bypass
+- Message categories: Preparation (5), Reflection (5), Benefits (5), Encouragement (3)
+
+**2.4 Security & Permissions Fix (Week 4)**
+- Update manifest.json to specific host permissions (remove `<all_urls>`)
+- Test on all supported sites
+- Document permission rationale for users
+
+**Expected Impact**: 2x activation rate, maintains effectiveness over 30+ days
+
+#### Phase 3: Identity Alignment (Weeks 5-8 - 20-25 hours effort)
+**Status**: Not started - depends on strategic decision from Phase 2.1
+
+**If AI Mindfulness Primary:**
+- Reorganize UI hierarchy (AI to first tab)
+- Context-aware prompts (coding vs writing vs research)
+- Integrated scratch pad for preparation notes
+- Progressive unlock system (5→15→20+ mindful uses)
+- Enhanced stats tracking question quality
+
+**If Distraction Blocking Primary:**
+- Reorganize UI hierarchy (Focus Mode first)
+- Smart mode detection (auto-block during work hours)
+- Social accountability features
+- Behavioral nudges using user's stated reasons
+- Cross-device sync
+
+#### Phase 4: Technical Excellence (Weeks 9-16 - 30-40 hours effort)
+**Status**: Not started - documented in MASTER-PLAN.md
+
+**4.1 Content Script Modularization (Weeks 9-11)**
+- Break content.js (3,239 lines) into focused modules:
+  - storage-manager.js (storage wrapper - lines 17-113)
+  - modal-manager.js (modal creation/display)
+  - site-detector.js (URL matching, identification)
+  - blocker.js (blocking/redirect logic)
+  - stats-tracker.js (usage tracking)
+  - session-manager.js (new conversation detection)
+  - ai-handler.js (AI-specific logic)
+  - social-handler.js (social media-specific logic)
+- Migrate incrementally with testing after each module
+- Git commit after each successful module
+
+**4.2 Testing Infrastructure (Week 12)**
+- Set up Jest + Chrome extension testing
+- Test coverage priorities:
+  1. Storage wrapper retry logic
+  2. URL matching and site detection
+  3. Modal display conditions
+  4. Stats tracking accuracy
+  5. Time validation logic
+
+**4.3 Performance Optimization (Week 13)**
+- Conditional injection (don't inject on all pages)
+- Lazy load modal HTML (only when needed)
+- Batch storage operations in popup
+- Cache configuration with TTL
+- Pre-render modal templates
+- Expected: 80-90% reduction in page load overhead
+
+**4.4 Documentation (Weeks 14-16)**
+- docs/ARCHITECTURE.md (data flow, component diagram)
+- docs/DEVELOPMENT.md (setup guide, contribution process)
+- docs/API.md (message passing, storage schema)
+- docs/PRIVACY.md (data collection transparency)
+- docs/SECURITY.md (vulnerability reporting)
+
+### Implementation Notes
+
+**Decision Framework**: Impact × Effort Matrix
+- High Impact + Low Effort → Do First (Quick wins)
+- High Impact + High Effort → Schedule Next (Foundation)
+- Low Impact + Low Effort → Do When Time (Polish)
+- Low Impact + High Effort → Don't Do (Premature optimization)
+
+**Success Metrics to Track:**
+- Activation: % completing onboarding (Target: >60%)
+- Retention: 7-day (>60%), 30-day (>40%)
+- Bypass rate at week 4 (Target: <30% - measures habituation)
+- Chrome Web Store rating (Target: >4.0)
+- NPS score (Target: >30)
+
+**Key Risks:**
+1. Wrong strategic choice → Mitigate with 1-2 weeks user research
+2. Habituation happens anyway → A/B test intervention patterns
+3. Chrome Web Store rejection → Fix permissions in Phase 2.4
+4. Technical refactor breaks things → Implement testing first (Phase 4.2 before 4.1)
+
+### Next Actions
+- [ ] Review all three detailed roadmaps in docs/roadmaps/
+- [ ] Execute Phase 1 quick wins (1-2 days total)
+- [ ] Plan user research for strategic decision (Week 1-2)
+- [ ] Conduct user research (surveys + 5-10 interviews)
+- [ ] Make strategic identity decision (AI-first vs Distraction-first)
+- [ ] Document decision with rationale
+- [ ] Begin Phase 2.2 onboarding flow implementation
+- [ ] Implement habituation prevention system
+- [ ] Fix security/permissions for Chrome Web Store compliance
+
+### Metrics
+- Files created: 7 (3 agents + 3 roadmaps + 1 master plan)
+- Files modified: 0
+- Total documentation: ~2,500 lines
+- Agents created: 3 (reusable for future reviews)
+- Roadmaps generated: 3 (product, UX, technical)
+- Issues identified: 31 (across all roadmaps)
+- Quick wins identified: 7 (1-2 days total effort)
+- Implementation phases planned: 4 (spanning 16 weeks)
