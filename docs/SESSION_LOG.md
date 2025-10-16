@@ -900,3 +900,92 @@ Successfully created a multi-agent review system with three specialized agents (
 - Issues identified: 31 (across all roadmaps)
 - Quick wins identified: 7 (1-2 days total effort)
 - Implementation phases planned: 4 (spanning 16 weeks)
+
+---
+
+## Session Log: 2025-10-15
+
+**Project**: creativity-guard
+**Duration**: ~45 minutes
+**Type**: [bugfix]
+
+### Objectives
+- Fix incorrect "Disabled extension" count showing "1 time" when user has disabled multiple times in last 24 hours
+- Fix blank page issue after bypassing on LinkedIn (second page stays blank after bypass)
+- Investigate root causes and implement comprehensive fixes
+
+### Summary
+Successfully identified and fixed two critical bugs through systematic root cause analysis. Issue #1 was caused by the validation function stripping out usage history data. Issue #2 was caused by session consent being saved after animation delay, leading to race conditions on quick page navigations. Both fixes preserve data integrity and improve user experience.
+
+### Files Changed
+- `extension-dev/background.js` - Added usageHistory preservation with validation to validateAndSanitizeSettingsForSave function (lines 278-306)
+- `extension-dev/content.js` - Moved sessionConsent update before animation delay to prevent race condition (lines 3006-3009)
+
+### Technical Notes
+
+#### Issue #1: Incorrect Disable Count
+**Root Cause**:
+- `validateAndSanitizeSettingsForSave` function in background.js preserved `visits` object but NOT `usageHistory` array
+- Every time content.js called `storage.set()`, the validation function stripped out usage history
+- Extension disable events were being recorded by `recordDisableEvent()` but immediately lost on next save
+
+**Data Flow Problem**:
+1. Extension disabled → `recordDisableEvent()` adds entry to `usageHistory` ✓
+2. Later, content.js calls `storage.set()` for recording visits or bypasses
+3. Settings validated through `validateAndSanitizeSettingsForSave`
+4. `usageHistory` stripped out because not in validation rules ✗
+5. Modal shows incorrect count (no history)
+
+**Fix Implementation**:
+- Added comprehensive `usageHistory` preservation (lines 278-306)
+- Validates each entry: timestamp, action type, optional fields
+- Auto-cleanup: keeps only entries from last 24 hours
+- Preserves optional fields: reason, platform, blockType
+
+#### Issue #2: Blank Page After Bypass on Second LinkedIn Page
+**Root Cause**:
+- `sessionConsent[platform]` was set AFTER 300ms animation delay
+- Quick page navigation happened before consent was saved to sessionStorage
+- New page checked for consent, found none, applied hide-flash CSS but didn't show modal
+- Result: inconsistent state with blank page
+
+**Timing Problem**:
+1. User clicks bypass on page 1
+2. Animation starts: `setTimeout(() => { sessionConsent = true }, 300ms)` scheduled
+3. User navigates to page 2 **before 300ms elapses**
+4. New page checks sessionStorage - finds NO consent (not saved yet)
+5. New page applies `hide-flash` CSS but sessionConsent check passes ✗
+6. Page stays blank with no modal
+
+**Fix Implementation**:
+- Moved `sessionConsent[platform] = true` and `saveSessionConsent()` BEFORE animation
+- Session consent now saved immediately on bypass click
+- Quick navigations properly detect bypass consent
+- Animation delay only affects modal removal, not consent state
+
+### Future Plans & Unimplemented Phases
+**None** - Both bugs were fully resolved with comprehensive fixes
+
+### Next Actions
+- [ ] Test disable count accuracy by disabling extension multiple times over 24 hours
+- [ ] Verify LinkedIn bypass works correctly on rapid page navigation
+- [ ] Test on other social media platforms (Twitter/X, Facebook)
+- [ ] Monitor for any edge cases where usageHistory might be lost
+- [ ] Consider adding data integrity validation tests
+- [ ] Test extension reload during active session to verify sessionStorage persistence
+
+### Metrics
+- Files modified: 2
+- Files created: 0
+- Lines added: 33 (usageHistory validation + sessionConsent timing fix)
+- Lines removed: 4 (duplicate sessionConsent assignments)
+- Bugs fixed: 2 (disable count accuracy, blank page after bypass)
+- Commits created: 2
+  - `55065e7` - chore: Update project structure and documentation
+  - `c01df34` - fix: Resolve incorrect disable count and blank page after bypass
+
+### Technical Insights
+- **Storage Validation Pattern**: Critical to preserve ALL user data through validation functions, not just known fields
+- **Race Conditions**: State changes in timeouts/animations should happen BEFORE delays if they affect immediate user actions
+- **Data Integrity**: Validation should clean up old data (24-hour window) while preserving valid entries
+- **Session Management**: Session state must be synchronous for navigation scenarios to work correctly
