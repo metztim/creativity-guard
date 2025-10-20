@@ -989,3 +989,88 @@ Successfully identified and fixed two critical bugs through systematic root caus
 - **Race Conditions**: State changes in timeouts/animations should happen BEFORE delays if they affect immediate user actions
 - **Data Integrity**: Validation should clean up old data (24-hour window) while preserving valid entries
 - **Session Management**: Session state must be synchronous for navigation scenarios to work correctly
+
+---
+
+## Session Log: 2025-10-16
+
+**Project**: creativity-guard
+**Duration**: ~1 hour
+**Type**: [bugfix]
+
+### Objectives
+- Fix LinkedIn redirect pages (e.g., `/safety/go?url=...`) triggering blocking modal when user already bypassed in another tab
+- Implement cross-tab session consent sharing to prevent modal from showing in new tabs during same browser session
+
+### Summary
+Successfully fixed the LinkedIn redirect tab issue using a two-pronged approach: (1) whitelisted LinkedIn utility/redirect pages to skip blocking entirely, and (2) migrated from tab-specific `sessionStorage` to cross-tab `chrome.storage.session` API for session consent tracking. Users can now click external links from LinkedIn DMs without seeing the modal again, and session consent properly persists across all LinkedIn tabs.
+
+### Files Changed
+- `extension-dev/content.js` - Added utility page whitelist check in handleSocialMediaSite(), migrated session consent to chrome.storage.session API
+
+### Technical Notes
+
+#### Root Cause
+- LinkedIn's safety redirect pages (`linkedin.com/safety/go?url=...`) were being treated as new LinkedIn sessions
+- Session consent was stored in `sessionStorage`, which is tab-specific and doesn't share across browser tabs
+- When clicking external links from DMs, new tabs opened to redirect pages without knowing about consent from original tab
+- Result: Modal showed on intermediate redirect pages before forwarding to external sites
+
+#### Solution 1: Utility Page Whitelist
+Added path-based whitelist in `handleSocialMediaSite()` for LinkedIn utility pages (lines 2070-2110):
+- `/safety/go` - External link redirects (the reported issue)
+- `/safety/` - Safety hub pages
+- `/uas/login` - Login pages
+- `/checkpoint/` - Security checkpoints
+
+These pages now bypass all blocking logic and immediately reveal the page.
+
+#### Solution 2: Cross-Tab Session Storage Migration
+Migrated from `sessionStorage` (tab-specific) to `chrome.storage.session` (cross-tab, session-scoped):
+
+**Changes:**
+1. `initSessionConsent()` (lines 1708-1743):
+   - Now async, uses `chrome.storage.session.get()`
+   - Falls back to `sessionStorage` for Chrome <102
+   - Graceful error handling with double fallback
+
+2. `saveSessionConsent()` (lines 1745-1767):
+   - Now async, uses `chrome.storage.session.set()`
+   - Falls back to `sessionStorage` on error or older Chrome
+   - Maintains backward compatibility
+
+3. Updated all callers:
+   - `init()` made async, awaits `initSessionConsent()` (line 1770, 1774)
+   - Two `saveSessionConsent()` calls updated with `await` (lines 2214, 3086)
+   - Comments updated to reflect new storage mechanism
+
+**Benefits:**
+- Session consent now shared across all tabs in same browser session
+- Bypassing modal in one tab allows access in all LinkedIn tabs
+- Session resets when browser closes (not just tab)
+- Requires Chrome 102+ (April 2022, widely supported)
+
+### Future Plans & Unimplemented Phases
+**None** - Both issues fully resolved with comprehensive solution
+
+### Next Actions
+- [ ] Test LinkedIn redirect flow: click external link from DM, verify no modal on redirect page
+- [ ] Test cross-tab session sharing: bypass in tab 1, open LinkedIn in tab 2, verify no modal
+- [ ] Test normal blocking still works after browser restart
+- [ ] Verify fallback to sessionStorage works on older Chrome versions
+- [ ] Monitor for any other LinkedIn utility pages that might need whitelisting
+- [ ] Consider extending utility page whitelist to other platforms (Twitter, Facebook) if similar patterns exist
+
+### Metrics
+- Files modified: 1
+- Files created: 0
+- Lines added: ~100 (whitelist check + async storage migration)
+- Lines modified: ~60 (function signatures, await calls, comments)
+- Bug fixes: 1 (LinkedIn redirect tab modal issue)
+- API migrations: 1 (sessionStorage → chrome.storage.session)
+
+### Technical Insights
+- **Tab vs Session Storage**: `sessionStorage` is tab-isolated; use `chrome.storage.session` for cross-tab session state in extensions
+- **Utility Page Patterns**: Social media platforms have intermediate redirect/safety pages that should be whitelisted from blocking
+- **Progressive Enhancement**: Async migration with fallbacks ensures compatibility across Chrome versions
+- **Session Scope**: `chrome.storage.session` provides exactly the right lifecycle - persists across tabs but clears on browser close

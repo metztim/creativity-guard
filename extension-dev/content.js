@@ -1705,38 +1705,73 @@ const socialMediaModule = {
     media: false
   },
 
-  // Initialize session consent from sessionStorage
-  initSessionConsent: function() {
-    // Try to restore session consent from sessionStorage
+  // Initialize session consent from chrome.storage.session (cross-tab)
+  initSessionConsent: async function() {
+    // Try to restore session consent from chrome.storage.session
     try {
-      const storedConsent = sessionStorage.getItem('creativityGuardSessionConsent');
-      if (storedConsent) {
-        const parsed = JSON.parse(storedConsent);
-        // Merge with default values to handle new platforms
-        this.sessionConsent = { ...this.sessionConsent, ...parsed };
-        console.log('%c[Creativity Guard] Restored session consent:', 'color: #0a66c2;', this.sessionConsent);
+      // Use chrome.storage.session for cross-tab session state (requires Chrome 102+)
+      if (chrome.storage && chrome.storage.session) {
+        const result = await chrome.storage.session.get('creativityGuardSessionConsent');
+        if (result.creativityGuardSessionConsent) {
+          // Merge with default values to handle new platforms
+          this.sessionConsent = { ...this.sessionConsent, ...result.creativityGuardSessionConsent };
+          console.log('%c[Creativity Guard] Restored session consent from chrome.storage.session:', 'color: #0a66c2;', this.sessionConsent);
+        }
+      } else {
+        // Fallback to sessionStorage for older Chrome versions (tab-specific)
+        console.log('%c[Creativity Guard] chrome.storage.session not available, using sessionStorage fallback', 'color: #ff9800;');
+        const storedConsent = sessionStorage.getItem('creativityGuardSessionConsent');
+        if (storedConsent) {
+          const parsed = JSON.parse(storedConsent);
+          this.sessionConsent = { ...this.sessionConsent, ...parsed };
+          console.log('%c[Creativity Guard] Restored session consent from sessionStorage:', 'color: #0a66c2;', this.sessionConsent);
+        }
       }
     } catch (e) {
       console.error('Error restoring session consent:', e);
+      // Fallback to sessionStorage on error
+      try {
+        const storedConsent = sessionStorage.getItem('creativityGuardSessionConsent');
+        if (storedConsent) {
+          const parsed = JSON.parse(storedConsent);
+          this.sessionConsent = { ...this.sessionConsent, ...parsed };
+        }
+      } catch (fallbackError) {
+        console.error('Error in sessionStorage fallback:', fallbackError);
+      }
     }
   },
 
-  // Save session consent to sessionStorage
-  saveSessionConsent: function() {
+  // Save session consent to chrome.storage.session (cross-tab)
+  saveSessionConsent: async function() {
     try {
-      sessionStorage.setItem('creativityGuardSessionConsent', JSON.stringify(this.sessionConsent));
-      console.log('%c[Creativity Guard] Saved session consent:', 'color: #0a66c2;', this.sessionConsent);
+      // Use chrome.storage.session for cross-tab session state (requires Chrome 102+)
+      if (chrome.storage && chrome.storage.session) {
+        await chrome.storage.session.set({ creativityGuardSessionConsent: this.sessionConsent });
+        console.log('%c[Creativity Guard] Saved session consent to chrome.storage.session:', 'color: #0a66c2;', this.sessionConsent);
+      } else {
+        // Fallback to sessionStorage for older Chrome versions (tab-specific)
+        console.log('%c[Creativity Guard] chrome.storage.session not available, using sessionStorage fallback', 'color: #ff9800;');
+        sessionStorage.setItem('creativityGuardSessionConsent', JSON.stringify(this.sessionConsent));
+        console.log('%c[Creativity Guard] Saved session consent to sessionStorage:', 'color: #0a66c2;', this.sessionConsent);
+      }
     } catch (e) {
       console.error('Error saving session consent:', e);
+      // Fallback to sessionStorage on error
+      try {
+        sessionStorage.setItem('creativityGuardSessionConsent', JSON.stringify(this.sessionConsent));
+      } catch (fallbackError) {
+        console.error('Error in sessionStorage fallback:', fallbackError);
+      }
     }
   },
   
   // Initialize the module
-  init: function() {
+  init: async function() {
     console.log('%c[Creativity Guard] Social media module initializing...', 'color: #0a66c2; font-weight: bold;');
 
-    // Initialize session consent from sessionStorage
-    this.initSessionConsent();
+    // Initialize session consent from chrome.storage.session (cross-tab)
+    await this.initSessionConsent();
 
     // Load settings and then handle the site visit after settings are loaded
     this.storage.get(async (settings) => {
@@ -2067,6 +2102,48 @@ const socialMediaModule = {
     try {
       console.log(`%c[Creativity Guard] Handling ${platform} visit`, 'color: #0a66c2;');
 
+      // --- Utility Page Whitelist Check ---
+      // Skip blocking for LinkedIn utility/redirect pages
+      if (platform === 'linkedin') {
+        const currentPath = window.location.pathname;
+        const utilityPaths = [
+          '/safety/go',      // External link redirects
+          '/safety/',        // Safety hub
+          '/uas/login',      // Login pages
+          '/checkpoint/',    // Security checkpoints
+        ];
+
+        const isUtilityPage = utilityPaths.some(path => currentPath.startsWith(path));
+
+        if (isUtilityPage) {
+          console.log(`%c[Creativity Guard] Skipping blocking for LinkedIn utility page: ${currentPath}`, 'color: #4caf50;');
+
+          // Remove early blocker if present
+          if (earlyBlockerElement && earlyBlockerElement.parentNode) {
+            earlyBlockerElement.remove();
+          }
+
+          // Remove hide-flash style if present
+          const hideStyle = document.getElementById('creativity-guard-hide-flash');
+          if (hideStyle) {
+            hideStyle.remove();
+          }
+
+          // Reveal the page
+          if (document.documentElement) {
+            document.documentElement.style.visibility = '';
+            document.documentElement.style.opacity = '';
+          }
+          if (document.body) {
+            document.body.style.visibility = '';
+            document.body.style.opacity = '';
+          }
+
+          return; // Skip all blocking logic for utility pages
+        }
+      }
+      // --- End Utility Page Whitelist Check ---
+
       // --- Vacation Mode Check ---
       if (this.settings.vacationModeEnabled) {
         console.log('%c[Creativity Guard] Vacation Mode is active, showing restriction modal', 'color: #ff9800;');
@@ -2134,7 +2211,7 @@ const socialMediaModule = {
 
         // Set session consent since this is allowed without prompt
         this.sessionConsent[platform] = true;
-        this.saveSessionConsent(); // Save to sessionStorage
+        await this.saveSessionConsent(); // Save to chrome.storage.session (cross-tab)
       }
     } catch (error) {
       console.error('%c[Creativity Guard] Error handling site visit:', 'color: #ff0000;', error);
@@ -3006,7 +3083,7 @@ const socialMediaModule = {
                 // Set session consent IMMEDIATELY to prevent modal from showing on next page
                 // This must happen before animation delay to handle quick page navigations
                 this.sessionConsent[platform] = true;
-                this.saveSessionConsent(); // Save to sessionStorage
+                await this.saveSessionConsent(); // Save to chrome.storage.session (cross-tab)
 
                 // Animate out before proceeding
                 modal.style.animation = 'modalFadeOut 0.3s ease-in forwards';

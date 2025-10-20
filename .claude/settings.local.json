@@ -8,7 +8,10 @@
       "Bash(grep:*)",
       "Bash(tree:*)",
       "Bash(awk:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(claude mcp list:*)",
+      "Bash(claude mcp add:*)",
+      "mcp__chrome-devtools__list_pages"
     ],
     "deny": [],
     "ask": []
