@@ -3,6 +3,7 @@ node_modules/
 npm-debug.log
 yarn-debug.log
 yarn-error.log
+package-lock.json
 
 # Build outputs
 dist/
@@ -13,9 +14,34 @@ build/
 .vscode/
 *.swp
 *.swo
+*.sw?
 .DS_Store
+*~
+
+# OS files
+Thumbs.db
+Desktop.ini
 
 # Chrome Extension specific
 *.pem
 *.crx
-*.zip 
+
+# Personal/local files
+.claude/settings.local.json
+.env
+.env.local
+*.local
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Session backups (keep main SESSION_LOG.md)
+docs/SESSION_LOG.md.backup
+docs/*_backup.md
+
+# Release zips (keep only in releases, not in repo)
+docs/zips/*.zip 
