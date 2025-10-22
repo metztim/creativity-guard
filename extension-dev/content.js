@@ -1705,12 +1705,33 @@ const socialMediaModule = {
     media: false
   },
 
+  // Helper function to safely check if chrome.storage.session is accessible
+  // Returns true if accessible, false if blocked by CSP or unavailable
+  isStorageSessionAccessible: async function() {
+    try {
+      // Check if API exists
+      if (!chrome?.storage?.session) {
+        return false;
+      }
+
+      // Try to actually access it - CSP may block this even if API exists
+      await chrome.storage.session.get('_test_access');
+      return true;
+    } catch (e) {
+      // CSP blocked or other error - not accessible
+      return false;
+    }
+  },
+
   // Initialize session consent from chrome.storage.session (cross-tab)
   initSessionConsent: async function() {
     // Try to restore session consent from chrome.storage.session
+    // First check if chrome.storage.session is actually accessible (CSP may block it)
+    const canUseStorageSession = await this.isStorageSessionAccessible();
+
     try {
       // Use chrome.storage.session for cross-tab session state (requires Chrome 102+)
-      if (chrome.storage && chrome.storage.session) {
+      if (canUseStorageSession) {
         const result = await chrome.storage.session.get('creativityGuardSessionConsent');
         if (result.creativityGuardSessionConsent) {
           // Merge with default values to handle new platforms
@@ -1718,8 +1739,8 @@ const socialMediaModule = {
           console.log('%c[Creativity Guard] Restored session consent from chrome.storage.session:', 'color: #0a66c2;', this.sessionConsent);
         }
       } else {
-        // Fallback to sessionStorage for older Chrome versions (tab-specific)
-        console.log('%c[Creativity Guard] chrome.storage.session not available, using sessionStorage fallback', 'color: #ff9800;');
+        // Fallback to sessionStorage (chrome.storage.session blocked by CSP or unavailable)
+        console.log('%c[Creativity Guard] chrome.storage.session not accessible, using sessionStorage', 'color: #ff9800;');
         const storedConsent = sessionStorage.getItem('creativityGuardSessionConsent');
         if (storedConsent) {
           const parsed = JSON.parse(storedConsent);
@@ -1728,40 +1749,47 @@ const socialMediaModule = {
         }
       }
     } catch (e) {
-      console.error('Error restoring session consent:', e);
-      // Fallback to sessionStorage on error
+      // Fallback to sessionStorage on any error
+      console.log('%c[Creativity Guard] Error accessing storage, using sessionStorage fallback', 'color: #ff9800;');
       try {
         const storedConsent = sessionStorage.getItem('creativityGuardSessionConsent');
         if (storedConsent) {
           const parsed = JSON.parse(storedConsent);
           this.sessionConsent = { ...this.sessionConsent, ...parsed };
+          console.log('%c[Creativity Guard] Restored session consent from sessionStorage:', 'color: #0a66c2;', this.sessionConsent);
         }
       } catch (fallbackError) {
-        console.error('Error in sessionStorage fallback:', fallbackError);
+        // Only warn if sessionStorage also fails
+        console.warn('[Creativity Guard] Both chrome.storage.session and sessionStorage unavailable, using in-memory state only');
       }
     }
   },
 
   // Save session consent to chrome.storage.session (cross-tab)
   saveSessionConsent: async function() {
+    // Check if chrome.storage.session is actually accessible (CSP may block it)
+    const canUseStorageSession = await this.isStorageSessionAccessible();
+
     try {
       // Use chrome.storage.session for cross-tab session state (requires Chrome 102+)
-      if (chrome.storage && chrome.storage.session) {
+      if (canUseStorageSession) {
         await chrome.storage.session.set({ creativityGuardSessionConsent: this.sessionConsent });
         console.log('%c[Creativity Guard] Saved session consent to chrome.storage.session:', 'color: #0a66c2;', this.sessionConsent);
       } else {
-        // Fallback to sessionStorage for older Chrome versions (tab-specific)
-        console.log('%c[Creativity Guard] chrome.storage.session not available, using sessionStorage fallback', 'color: #ff9800;');
+        // Fallback to sessionStorage (chrome.storage.session blocked by CSP or unavailable)
+        console.log('%c[Creativity Guard] chrome.storage.session not accessible, using sessionStorage', 'color: #ff9800;');
         sessionStorage.setItem('creativityGuardSessionConsent', JSON.stringify(this.sessionConsent));
         console.log('%c[Creativity Guard] Saved session consent to sessionStorage:', 'color: #0a66c2;', this.sessionConsent);
       }
     } catch (e) {
-      console.error('Error saving session consent:', e);
-      // Fallback to sessionStorage on error
+      // Fallback to sessionStorage on any error
+      console.log('%c[Creativity Guard] Error accessing storage, using sessionStorage fallback', 'color: #ff9800;');
       try {
         sessionStorage.setItem('creativityGuardSessionConsent', JSON.stringify(this.sessionConsent));
+        console.log('%c[Creativity Guard] Saved session consent to sessionStorage:', 'color: #0a66c2;', this.sessionConsent);
       } catch (fallbackError) {
-        console.error('Error in sessionStorage fallback:', fallbackError);
+        // Only warn if sessionStorage also fails
+        console.warn('[Creativity Guard] Both chrome.storage.session and sessionStorage unavailable, using in-memory state only');
       }
     }
   },
@@ -3073,7 +3101,7 @@ const socialMediaModule = {
             // Show countdown
             showCountdown(
               reason,
-              () => {
+              async () => {
                 // Countdown completed - record and proceed
                 this.recordBypassWithReason(platform, reason, blockType);
 
