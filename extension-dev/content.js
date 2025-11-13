@@ -9,7 +9,7 @@
   ];
 
   const mightBeBlocked = potentiallyBlockedSites.some(site =>
-    hostname === site || hostname.endsWith('.' + site) || hostname.includes(site)
+    hostname === site || hostname.endsWith('.' + site)
   );
 
   // Only inject hiding CSS if we might be blocked
@@ -44,7 +44,7 @@ function injectEarlyBlocker() {
   ];
 
   const isBlockedSite = defaultBlockedSites.some(site =>
-    hostname === site || hostname.endsWith('.' + site) || hostname.includes(site)
+    hostname === site || hostname.endsWith('.' + site)
   );
 
   if (!isBlockedSite) {
@@ -575,7 +575,7 @@ async function loadSitesConfig() {
 function isHostnameInSites(hostname, sites) {
   return sites.some(site => {
     const domain = site.domain || site;
-    return hostname === domain || hostname.endsWith('.' + domain) || hostname.includes(domain);
+    return hostname === domain || hostname.endsWith('.' + domain);
   });
 }
 
@@ -1705,6 +1705,12 @@ const socialMediaModule = {
     media: false
   },
 
+  // Store original page title to restore when modal is removed
+  originalTitle: null,
+
+  // Store title observer to clean up when modal is removed
+  titleObserver: null,
+
   // Helper function to safely check if chrome.storage.session is accessible
   // Returns true if accessible, false if blocked by CSP or unavailable
   isStorageSessionAccessible: async function() {
@@ -2443,6 +2449,25 @@ const socialMediaModule = {
     }
   },
 
+  // Restore the original page title
+  restorePageTitle: function() {
+    try {
+      // Stop observing title changes
+      if (this.titleObserver) {
+        this.titleObserver.disconnect();
+        this.titleObserver = null;
+      }
+
+      // Restore the original title if we stored one
+      if (this.originalTitle !== null) {
+        document.title = this.originalTitle;
+        this.originalTitle = null;
+      }
+    } catch (error) {
+      console.error('%c[Creativity Guard] Error restoring page title:', 'color: #ff0000;', error);
+    }
+  },
+
   // Show social media restriction modal
   showSocialMediaModal: function(platform, isVacationMode = false, displayName = null) { // Added displayName for media sites
     try {
@@ -2644,7 +2669,34 @@ const socialMediaModule = {
 
       const modal = document.createElement('div');
       modal.id = 'social-media-modal';
-      
+
+      // Store original title and change to neutral title to hide notifications
+      if (this.originalTitle === null) {
+        this.originalTitle = document.title;
+      }
+      document.title = 'Focus Time';
+
+      // Set up MutationObserver to prevent dynamic title updates (e.g., notification counts)
+      // This ensures the title stays as "Focus Time" even if the site tries to update it
+      if (!this.titleObserver) {
+        const titleElement = document.querySelector('title');
+        if (titleElement) {
+          this.titleObserver = new MutationObserver(() => {
+            // If the site tries to change the title while modal is active, change it back
+            if (document.title !== 'Focus Time') {
+              document.title = 'Focus Time';
+            }
+          });
+
+          // Observe changes to the title element's text content
+          this.titleObserver.observe(titleElement, {
+            childList: true,
+            characterData: true,
+            subtree: true
+          });
+        }
+      }
+
       const content = document.createElement('div');
       content.className = 'content';
       
@@ -3116,6 +3168,8 @@ const socialMediaModule = {
                 // Animate out before proceeding
                 modal.style.animation = 'modalFadeOut 0.3s ease-in forwards';
                 setTimeout(() => {
+                  // Restore the original page title
+                  this.restorePageTitle();
                   modal.remove();
                   // Also ensure early blocker is removed
                   if (earlyBlockerElement && earlyBlockerElement.parentNode) {
@@ -3189,6 +3243,7 @@ const socialMediaModule = {
           const validatedUrl = validateAndSanitizeUrl(redirectUrl);
 
           // Remove modal first
+          this.restorePageTitle();
           modal.remove();
 
           // Ensure page stays hidden during redirect
