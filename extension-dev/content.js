@@ -2199,6 +2199,28 @@ const socialMediaModule = {
       // Check if user already gave consent for this session
       if (this.sessionConsent[platform]) {
         console.log(`%c[Creativity Guard] User already gave consent for ${platform} this session`, 'color: #0a66c2;');
+
+        // Remove early blocker since user has session consent
+        if (earlyBlockerElement && earlyBlockerElement.parentNode) {
+          earlyBlockerElement.remove();
+        }
+
+        // Remove hide-flash style if present
+        const hideStyle = document.getElementById('creativity-guard-hide-flash');
+        if (hideStyle) {
+          hideStyle.remove();
+        }
+
+        // Reveal the page
+        if (document.documentElement) {
+          document.documentElement.style.visibility = '';
+          document.documentElement.style.opacity = '';
+        }
+        if (document.body) {
+          document.body.style.visibility = '';
+          document.body.style.opacity = '';
+        }
+
         return;
       }
 
@@ -2974,6 +2996,17 @@ const socialMediaModule = {
               transition: all 0.2s ease;
               min-width: 160px;
             `;
+          }
+        });
+
+        // Handle Enter key to submit (Shift+Enter for newline)
+        reasonInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            const reason = reasonInput.value.trim();
+            if (validateReason(reason)) {
+              onValidReason(reason);
+            }
           }
         });
 

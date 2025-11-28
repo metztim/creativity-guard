@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Creativity Guard",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Block distracting sites and encourage thoughtful AI usage",
   "permissions": ["storage", "tabs", "management"],
   "background": {
@@ -26,14 +26,14 @@
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
-      "16": "icons/icon16.svg",
-      "48": "icons/icon48.svg",
-      "128": "icons/icon128.svg"
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
     }
   },
   "icons": {
-    "16": "icons/icon16.svg",
-    "48": "icons/icon48.svg",
-    "128": "icons/icon128.svg"
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
   }
-} 
+}

@@ -9,7 +9,7 @@
   ];
 
   const mightBeBlocked = potentiallyBlockedSites.some(site =>
-    hostname === site || hostname.endsWith('.' + site) || hostname.includes(site)
+    hostname === site || hostname.endsWith('.' + site)
   );
 
   // Only inject hiding CSS if we might be blocked
@@ -44,7 +44,7 @@ function injectEarlyBlocker() {
   ];
 
   const isBlockedSite = defaultBlockedSites.some(site =>
-    hostname === site || hostname.endsWith('.' + site) || hostname.includes(site)
+    hostname === site || hostname.endsWith('.' + site)
   );
 
   if (!isBlockedSite) {
@@ -174,6 +174,21 @@ const CreativityGuardCleanup = {
       this.eventListeners.set(element, []);
     }
     this.eventListeners.get(element).push({ type: eventType, handler });
+  },
+
+  // Track an element for cleanup
+  trackElement: function(element) {
+    // Add a cleanup callback to remove this element if it still exists
+    this.addCleanupCallback(() => {
+      if (element && element.parentNode) {
+        try {
+          element.remove();
+        } catch (e) {
+          console.warn('Error removing tracked element:', e);
+        }
+      }
+    });
+    return element;
   },
 
   // Add a cleanup callback
@@ -560,7 +575,7 @@ async function loadSitesConfig() {
 function isHostnameInSites(hostname, sites) {
   return sites.some(site => {
     const domain = site.domain || site;
-    return hostname === domain || hostname.endsWith('.' + domain) || hostname.includes(domain);
+    return hostname === domain || hostname.endsWith('.' + domain);
   });
 }
 
@@ -1690,38 +1705,107 @@ const socialMediaModule = {
     media: false
   },
 
-  // Initialize session consent from sessionStorage
-  initSessionConsent: function() {
-    // Try to restore session consent from sessionStorage
+  // Store original page title to restore when modal is removed
+  originalTitle: null,
+
+  // Store title observer to clean up when modal is removed
+  titleObserver: null,
+
+  // Helper function to safely check if chrome.storage.session is accessible
+  // Returns true if accessible, false if blocked by CSP or unavailable
+  isStorageSessionAccessible: async function() {
     try {
-      const storedConsent = sessionStorage.getItem('creativityGuardSessionConsent');
-      if (storedConsent) {
-        const parsed = JSON.parse(storedConsent);
-        // Merge with default values to handle new platforms
-        this.sessionConsent = { ...this.sessionConsent, ...parsed };
-        console.log('%c[Creativity Guard] Restored session consent:', 'color: #0a66c2;', this.sessionConsent);
+      // Check if API exists
+      if (!chrome?.storage?.session) {
+        return false;
       }
+
+      // Try to actually access it - CSP may block this even if API exists
+      await chrome.storage.session.get('_test_access');
+      return true;
     } catch (e) {
-      console.error('Error restoring session consent:', e);
+      // CSP blocked or other error - not accessible
+      return false;
     }
   },
 
-  // Save session consent to sessionStorage
-  saveSessionConsent: function() {
+  // Initialize session consent from chrome.storage.session (cross-tab)
+  initSessionConsent: async function() {
+    // Try to restore session consent from chrome.storage.session
+    // First check if chrome.storage.session is actually accessible (CSP may block it)
+    const canUseStorageSession = await this.isStorageSessionAccessible();
+
     try {
-      sessionStorage.setItem('creativityGuardSessionConsent', JSON.stringify(this.sessionConsent));
-      console.log('%c[Creativity Guard] Saved session consent:', 'color: #0a66c2;', this.sessionConsent);
+      // Use chrome.storage.session for cross-tab session state (requires Chrome 102+)
+      if (canUseStorageSession) {
+        const result = await chrome.storage.session.get('creativityGuardSessionConsent');
+        if (result.creativityGuardSessionConsent) {
+          // Merge with default values to handle new platforms
+          this.sessionConsent = { ...this.sessionConsent, ...result.creativityGuardSessionConsent };
+          console.log('%c[Creativity Guard] Restored session consent from chrome.storage.session:', 'color: #0a66c2;', this.sessionConsent);
+        }
+      } else {
+        // Fallback to sessionStorage (chrome.storage.session blocked by CSP or unavailable)
+        console.log('%c[Creativity Guard] chrome.storage.session not accessible, using sessionStorage', 'color: #ff9800;');
+        const storedConsent = sessionStorage.getItem('creativityGuardSessionConsent');
+        if (storedConsent) {
+          const parsed = JSON.parse(storedConsent);
+          this.sessionConsent = { ...this.sessionConsent, ...parsed };
+          console.log('%c[Creativity Guard] Restored session consent from sessionStorage:', 'color: #0a66c2;', this.sessionConsent);
+        }
+      }
     } catch (e) {
-      console.error('Error saving session consent:', e);
+      // Fallback to sessionStorage on any error
+      console.log('%c[Creativity Guard] Error accessing storage, using sessionStorage fallback', 'color: #ff9800;');
+      try {
+        const storedConsent = sessionStorage.getItem('creativityGuardSessionConsent');
+        if (storedConsent) {
+          const parsed = JSON.parse(storedConsent);
+          this.sessionConsent = { ...this.sessionConsent, ...parsed };
+          console.log('%c[Creativity Guard] Restored session consent from sessionStorage:', 'color: #0a66c2;', this.sessionConsent);
+        }
+      } catch (fallbackError) {
+        // Only warn if sessionStorage also fails
+        console.warn('[Creativity Guard] Both chrome.storage.session and sessionStorage unavailable, using in-memory state only');
+      }
+    }
+  },
+
+  // Save session consent to chrome.storage.session (cross-tab)
+  saveSessionConsent: async function() {
+    // Check if chrome.storage.session is actually accessible (CSP may block it)
+    const canUseStorageSession = await this.isStorageSessionAccessible();
+
+    try {
+      // Use chrome.storage.session for cross-tab session state (requires Chrome 102+)
+      if (canUseStorageSession) {
+        await chrome.storage.session.set({ creativityGuardSessionConsent: this.sessionConsent });
+        console.log('%c[Creativity Guard] Saved session consent to chrome.storage.session:', 'color: #0a66c2;', this.sessionConsent);
+      } else {
+        // Fallback to sessionStorage (chrome.storage.session blocked by CSP or unavailable)
+        console.log('%c[Creativity Guard] chrome.storage.session not accessible, using sessionStorage', 'color: #ff9800;');
+        sessionStorage.setItem('creativityGuardSessionConsent', JSON.stringify(this.sessionConsent));
+        console.log('%c[Creativity Guard] Saved session consent to sessionStorage:', 'color: #0a66c2;', this.sessionConsent);
+      }
+    } catch (e) {
+      // Fallback to sessionStorage on any error
+      console.log('%c[Creativity Guard] Error accessing storage, using sessionStorage fallback', 'color: #ff9800;');
+      try {
+        sessionStorage.setItem('creativityGuardSessionConsent', JSON.stringify(this.sessionConsent));
+        console.log('%c[Creativity Guard] Saved session consent to sessionStorage:', 'color: #0a66c2;', this.sessionConsent);
+      } catch (fallbackError) {
+        // Only warn if sessionStorage also fails
+        console.warn('[Creativity Guard] Both chrome.storage.session and sessionStorage unavailable, using in-memory state only');
+      }
     }
   },
   
   // Initialize the module
-  init: function() {
+  init: async function() {
     console.log('%c[Creativity Guard] Social media module initializing...', 'color: #0a66c2; font-weight: bold;');
 
-    // Initialize session consent from sessionStorage
-    this.initSessionConsent();
+    // Initialize session consent from chrome.storage.session (cross-tab)
+    await this.initSessionConsent();
 
     // Load settings and then handle the site visit after settings are loaded
     this.storage.get(async (settings) => {
@@ -2052,6 +2136,48 @@ const socialMediaModule = {
     try {
       console.log(`%c[Creativity Guard] Handling ${platform} visit`, 'color: #0a66c2;');
 
+      // --- Utility Page Whitelist Check ---
+      // Skip blocking for LinkedIn utility/redirect pages
+      if (platform === 'linkedin') {
+        const currentPath = window.location.pathname;
+        const utilityPaths = [
+          '/safety/go',      // External link redirects
+          '/safety/',        // Safety hub
+          '/uas/login',      // Login pages
+          '/checkpoint/',    // Security checkpoints
+        ];
+
+        const isUtilityPage = utilityPaths.some(path => currentPath.startsWith(path));
+
+        if (isUtilityPage) {
+          console.log(`%c[Creativity Guard] Skipping blocking for LinkedIn utility page: ${currentPath}`, 'color: #4caf50;');
+
+          // Remove early blocker if present
+          if (earlyBlockerElement && earlyBlockerElement.parentNode) {
+            earlyBlockerElement.remove();
+          }
+
+          // Remove hide-flash style if present
+          const hideStyle = document.getElementById('creativity-guard-hide-flash');
+          if (hideStyle) {
+            hideStyle.remove();
+          }
+
+          // Reveal the page
+          if (document.documentElement) {
+            document.documentElement.style.visibility = '';
+            document.documentElement.style.opacity = '';
+          }
+          if (document.body) {
+            document.body.style.visibility = '';
+            document.body.style.opacity = '';
+          }
+
+          return; // Skip all blocking logic for utility pages
+        }
+      }
+      // --- End Utility Page Whitelist Check ---
+
       // --- Vacation Mode Check ---
       if (this.settings.vacationModeEnabled) {
         console.log('%c[Creativity Guard] Vacation Mode is active, showing restriction modal', 'color: #ff9800;');
@@ -2073,6 +2199,28 @@ const socialMediaModule = {
       // Check if user already gave consent for this session
       if (this.sessionConsent[platform]) {
         console.log(`%c[Creativity Guard] User already gave consent for ${platform} this session`, 'color: #0a66c2;');
+
+        // Remove early blocker since user has session consent
+        if (earlyBlockerElement && earlyBlockerElement.parentNode) {
+          earlyBlockerElement.remove();
+        }
+
+        // Remove hide-flash style if present
+        const hideStyle = document.getElementById('creativity-guard-hide-flash');
+        if (hideStyle) {
+          hideStyle.remove();
+        }
+
+        // Reveal the page
+        if (document.documentElement) {
+          document.documentElement.style.visibility = '';
+          document.documentElement.style.opacity = '';
+        }
+        if (document.body) {
+          document.body.style.visibility = '';
+          document.body.style.opacity = '';
+        }
+
         return;
       }
 
@@ -2119,7 +2267,7 @@ const socialMediaModule = {
 
         // Set session consent since this is allowed without prompt
         this.sessionConsent[platform] = true;
-        this.saveSessionConsent(); // Save to sessionStorage
+        await this.saveSessionConsent(); // Save to chrome.storage.session (cross-tab)
       }
     } catch (error) {
       console.error('%c[Creativity Guard] Error handling site visit:', 'color: #ff0000;', error);
@@ -2323,6 +2471,25 @@ const socialMediaModule = {
     }
   },
 
+  // Restore the original page title
+  restorePageTitle: function() {
+    try {
+      // Stop observing title changes
+      if (this.titleObserver) {
+        this.titleObserver.disconnect();
+        this.titleObserver = null;
+      }
+
+      // Restore the original title if we stored one
+      if (this.originalTitle !== null) {
+        document.title = this.originalTitle;
+        this.originalTitle = null;
+      }
+    } catch (error) {
+      console.error('%c[Creativity Guard] Error restoring page title:', 'color: #ff0000;', error);
+    }
+  },
+
   // Show social media restriction modal
   showSocialMediaModal: function(platform, isVacationMode = false, displayName = null) { // Added displayName for media sites
     try {
@@ -2495,7 +2662,7 @@ const socialMediaModule = {
           }
           
           #social-media-modal #skip::before {
-            content: '📚';
+            content: '';
           }
           
           /* Responsive design */
@@ -2524,7 +2691,34 @@ const socialMediaModule = {
 
       const modal = document.createElement('div');
       modal.id = 'social-media-modal';
-      
+
+      // Store original title and change to neutral title to hide notifications
+      if (this.originalTitle === null) {
+        this.originalTitle = document.title;
+      }
+      document.title = 'Focus Time';
+
+      // Set up MutationObserver to prevent dynamic title updates (e.g., notification counts)
+      // This ensures the title stays as "Focus Time" even if the site tries to update it
+      if (!this.titleObserver) {
+        const titleElement = document.querySelector('title');
+        if (titleElement) {
+          this.titleObserver = new MutationObserver(() => {
+            // If the site tries to change the title while modal is active, change it back
+            if (document.title !== 'Focus Time') {
+              document.title = 'Focus Time';
+            }
+          });
+
+          // Observe changes to the title element's text content
+          this.titleObserver.observe(titleElement, {
+            childList: true,
+            characterData: true,
+            subtree: true
+          });
+        }
+      }
+
       const content = document.createElement('div');
       content.className = 'content';
       
@@ -2805,6 +2999,17 @@ const socialMediaModule = {
           }
         });
 
+        // Handle Enter key to submit (Shift+Enter for newline)
+        reasonInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            const reason = reasonInput.value.trim();
+            if (validateReason(reason)) {
+              onValidReason(reason);
+            }
+          }
+        });
+
         startCountdownBtn.addEventListener('click', () => {
           const reason = reasonInput.value.trim();
           if (validateReason(reason)) {
@@ -2953,8 +3158,8 @@ const socialMediaModule = {
       // Create bypass button (always shown now)
       const bypassButton = document.createElement('button');
       bypassButton.id = 'bypass';
-      bypassButton.textContent = 'Bypass Blockade';
-      bypassButton.setAttribute('aria-label', 'Bypass the blockade with accountability');
+      bypassButton.textContent = 'Bypass Guard';
+      bypassButton.setAttribute('aria-label', 'Bypass the guard with accountability');
       bypassButton.setAttribute('title', 'Provide a reason to bypass (Enter)');
       bypassButton.style.cssText = `
         padding: 14px 28px;
@@ -2981,18 +3186,23 @@ const socialMediaModule = {
             // Show countdown
             showCountdown(
               reason,
-              () => {
+              async () => {
                 // Countdown completed - record and proceed
                 this.recordBypassWithReason(platform, reason, blockType);
 
                 // Show the reason bar to keep the reason visible
                 this.showReasonBar(reason, platform);
 
+                // Set session consent IMMEDIATELY to prevent modal from showing on next page
+                // This must happen before animation delay to handle quick page navigations
+                this.sessionConsent[platform] = true;
+                await this.saveSessionConsent(); // Save to chrome.storage.session (cross-tab)
+
                 // Animate out before proceeding
                 modal.style.animation = 'modalFadeOut 0.3s ease-in forwards';
                 setTimeout(() => {
-                  this.sessionConsent[platform] = true;
-                  this.saveSessionConsent(); // Save to sessionStorage
+                  // Restore the original page title
+                  this.restorePageTitle();
                   modal.remove();
                   // Also ensure early blocker is removed
                   if (earlyBlockerElement && earlyBlockerElement.parentNode) {
@@ -3047,9 +3257,9 @@ const socialMediaModule = {
       
       const skipButton = document.createElement('button');
       skipButton.id = 'skip';
-      skipButton.textContent = 'Go to Reading';
-      skipButton.setAttribute('aria-label', 'Go to reading material instead');
-      skipButton.setAttribute('title', 'Redirect to reading material (Escape)');
+      skipButton.textContent = '✨ Get Inspired Instead';
+      skipButton.setAttribute('aria-label', 'Get inspired at your chosen redirect site');
+      skipButton.setAttribute('title', 'Redirect to your inspiration site (Escape)');
       const skipModalHandler = () => {
         try {
           // Keep the page hidden during redirect to prevent any flash
@@ -3066,6 +3276,7 @@ const socialMediaModule = {
           const validatedUrl = validateAndSanitizeUrl(redirectUrl);
 
           // Remove modal first
+          this.restorePageTitle();
           modal.remove();
 
           // Ensure page stays hidden during redirect
@@ -3171,6 +3382,13 @@ const socialMediaModule = {
       // Also try the element reference
       if (earlyBlockerElement && earlyBlockerElement.parentNode) {
         earlyBlockerElement.remove();
+      }
+
+      // IMPORTANT: Remove the CSS that's hiding the page
+      // The modal has its own overlay so we don't need to hide the page anymore
+      const hideStyle = document.getElementById('creativity-guard-hide-flash');
+      if (hideStyle) {
+        hideStyle.remove();
       }
 
       // Focus management for accessibility

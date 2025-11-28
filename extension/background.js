@@ -35,7 +35,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.type === 'UPDATE_SITES_CONFIG') {
-      handleUpdateSitesConfig(request.config, sendResponse);
+      if (request.config) {
+        // Full config update
+        handleUpdateSitesConfig(request.config, sendResponse);
+      } else if (request.category && request.key !== undefined) {
+        // Partial update (from checkbox toggles, etc.)
+        handlePartialSitesConfigUpdate(request.category, request.key, request.value, sendResponse);
+      } else {
+        sendResponse({ error: 'Invalid update request format', success: false });
+      }
       return true; // Required for async response
     }
 
@@ -257,7 +265,7 @@ function validateAndSanitizeSettingsForSave(settings) {
       sanitized.visits = {};
       // Validate each visit entry
       for (const [platform, date] of Object.entries(settings.visits)) {
-        if (typeof platform === 'string' && typeof date === 'string' && 
+        if (typeof platform === 'string' && typeof date === 'string' &&
             ['linkedin', 'twitter', 'facebook'].includes(platform) &&
             /^\d{4}-\d{2}-\d{2}$/.test(date)) {
           sanitized.visits[platform] = date;
@@ -266,7 +274,37 @@ function validateAndSanitizeSettingsForSave(settings) {
     } else {
       sanitized.visits = {};
     }
-    
+
+    // Copy usageHistory array if present (with validation)
+    // This tracks bypass and disable events for the stats display
+    if (settings.usageHistory && Array.isArray(settings.usageHistory)) {
+      sanitized.usageHistory = [];
+      // Validate each history entry
+      const now = Date.now();
+      const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000);
+
+      for (const entry of settings.usageHistory) {
+        if (entry &&
+            typeof entry === 'object' &&
+            typeof entry.timestamp === 'number' &&
+            typeof entry.action === 'string' &&
+            ['bypass', 'disabled'].includes(entry.action) &&
+            entry.timestamp > twentyFourHoursAgo) {
+          // Keep only entries from the last 24 hours
+          sanitized.usageHistory.push({
+            timestamp: entry.timestamp,
+            action: entry.action,
+            // Preserve optional fields if present
+            ...(entry.reason && { reason: String(entry.reason) }),
+            ...(entry.platform && { platform: String(entry.platform) }),
+            ...(entry.blockType && { blockType: String(entry.blockType) })
+          });
+        }
+      }
+    } else {
+      sanitized.usageHistory = [];
+    }
+
     return sanitized;
   } catch (error) {
     console.error('Error validating settings:', error);
@@ -464,7 +502,7 @@ function handleGetSitesConfig(sendResponse) {
     });
 }
 
-// Update sites configuration
+// Update sites configuration (full update)
 function handleUpdateSitesConfig(config, sendResponse) {
   if (!config || typeof config !== 'object') {
     sendResponse({ error: 'Invalid configuration provided', success: false });
@@ -480,6 +518,32 @@ function handleUpdateSitesConfig(config, sendResponse) {
     .catch(error => {
       console.error('Error updating sites config:', error);
       sendResponse({ error: 'Failed to update sites configuration', success: false });
+    });
+}
+
+// Update sites configuration (partial update - single field)
+function handlePartialSitesConfigUpdate(category, key, value, sendResponse) {
+  readSitesJson()
+    .then(config => {
+      const sitesConfig = config || getDefaultSitesConfig();
+
+      // Update the specific field
+      if (!sitesConfig[category]) {
+        sitesConfig[category] = {};
+      }
+      sitesConfig[category][key] = value;
+
+      // Save the updated config
+      return writeSitesJson(sitesConfig)
+        .then(() => {
+          // Sync changes to Chrome storage for backward compatibility
+          syncSitesToStorage(sitesConfig);
+          sendResponse({ success: true });
+        });
+    })
+    .catch(error => {
+      console.error('Error updating partial sites config:', error);
+      sendResponse({ error: 'Failed to update site configuration', success: false });
     });
 }
 
@@ -568,35 +632,44 @@ function handleOpenSitesJson(sendResponse) {
   }
 }
 
-// Read sites.json file
+// Read sites configuration (from Chrome storage first, then sites.json as fallback)
 async function readSitesJson() {
   try {
+    // First, try to get the config from Chrome storage (where updates are saved)
+    const storageData = await new Promise((resolve) => {
+      chrome.storage.local.get(['sitesConfig'], (result) => {
+        resolve(result.sitesConfig || null);
+      });
+    });
+
+    if (storageData) {
+      console.log('Loaded sites config from Chrome storage');
+      return validateSitesConfig(storageData);
+    }
+
+    // If no data in storage, read from sites.json file as default template
     const response = await fetch(chrome.runtime.getURL('sites.json'));
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     const config = await response.json();
+    console.log('Loaded sites config from sites.json file');
     return validateSitesConfig(config);
   } catch (error) {
-    console.error('Error reading sites.json:', error);
+    console.error('Error reading sites configuration:', error);
     return null;
   }
 }
 
-// Write sites.json file (Note: Extensions cannot write to their own files)
-// This function exists for API consistency but will always fail
+// Write sites configuration to Chrome storage
+// Note: Chrome extensions cannot write to their own files, so we use Chrome storage
 async function writeSitesJson(config) {
-  // Chrome extensions cannot write to their own files in the extension directory
-  // This would require a different approach like downloading the file or using a web service
-  console.warn('Writing to sites.json is not supported in Chrome extensions');
-
-  // Instead, we'll sync to Chrome storage as a fallback
   return new Promise((resolve, reject) => {
     chrome.storage.local.set({ sitesConfig: config }, () => {
       if (chrome.runtime.lastError) {
         reject(new Error(chrome.runtime.lastError.message));
       } else {
-        console.log('Sites config saved to Chrome storage as fallback');
+        console.log('Sites config saved to Chrome storage');
         resolve();
       }
     });
