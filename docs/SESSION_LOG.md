@@ -821,3 +821,121 @@ This approach:
 - **Error Prevention > Error Handling**: Testing accessibility before use prevents errors better than catching them after
 - **Chrome DevTools MCP**: Excellent tool for automated extension testing and debugging
 - **Session Scope**: `chrome.storage.session` provides exactly the right lifecycle - persists across tabs but clears on browser close
+
+---
+
+## Session Log: 2025-11-13
+
+**Project**: Creativity Guard - Chrome Extension
+**Duration**: ~45 minutes
+**Type**: [bugfix] [feature]
+
+### Objectives
+- Fix manifest.json error preventing extension from loading
+- Hide notification counts in browser tab title when blocking social media sites
+- Sync repository with remote (GitHub)
+
+### Summary
+Fixed a critical manifest validation error that prevented the extension from loading due to invalid `exclude_matches` values. Then implemented a comprehensive solution to hide notification counts and other tempting information from the browser tab title when the social media blocking modal is displayed. The tab now shows "Focus Time" instead of revealing notification counts like "(1) Feed | LinkedIn". Finally, updated the remote repository URL and configured GitHub no-reply email for privacy.
+
+### Files Changed
+- `extension-dev/manifest.json` - Attempted to add `exclude_matches` for Chrome internal pages, but reverted due to validation error
+- `extension-dev/content.js` - Added title hiding functionality with MutationObserver to prevent dynamic updates
+
+### Technical Notes
+- **Manifest V3 Restrictions**: Chrome does not accept `chrome://` or `chrome-extension://` URLs in `exclude_matches` patterns. Chrome internal pages are automatically excluded from content script injection by default.
+- **Title Hiding Implementation**: Used a three-part approach:
+  1. Store original title before changing it
+  2. Change to "Focus Time" when modal displays
+  3. Use MutationObserver to prevent sites from updating the title dynamically (e.g., new notification counts)
+- **Clean Restoration**: Title is restored when modal is removed (bypass or redirect), and MutationObserver is properly disconnected
+- **Git Configuration**: Updated to use GitHub no-reply email (`metztim@users.noreply.github.com`) to comply with GitHub's email privacy protection
+
+### Implementation Details
+
+#### Title Hiding Feature
+**Location**: `extension-dev/content.js`
+
+**Added Properties** (lines 1709-1712):
+- `originalTitle`: Stores page title for restoration
+- `titleObserver`: Stores MutationObserver for cleanup
+
+**Added Functions**:
+- `restorePageTitle()` (lines 2452-2469): Safely restores original title and disconnects observer
+
+**Modified Functions**:
+- `showSocialMediaModal()` (lines 2673-2698):
+  - Stores original title if not already stored
+  - Changes title to "Focus Time"
+  - Sets up MutationObserver on `<title>` element to prevent dynamic updates
+  - Observer watches for `childList`, `characterData`, and `subtree` changes
+  - Automatically resets title if site attempts to change it
+
+**Restoration Points**:
+- Line 3151: When user bypasses guard (after countdown completes)
+- Line 3225: When user redirects to alternate URL
+
+### Next Actions
+- [x] Reload extension in chrome://extensions/ to test title hiding
+- [x] Verify tab shows "Focus Time" instead of notification counts on LinkedIn
+- [x] Test that title persists even if site tries to update it
+- [x] Verify title restoration works on bypass and redirect
+- [x] Sync changes with remote repository
+- [ ] Test on multiple social media sites (Twitter, Facebook)
+- [ ] Consider if AI sites should also hide title (currently only social media sites)
+
+### Metrics
+- Files modified: 1 (content.js)
+- Lines added: 59
+- Lines removed: 4
+- New functions: 1 (restorePageTitle)
+- New properties: 2 (originalTitle, titleObserver)
+- Git operations: Remote URL updated, email configured, commit amended and pushed
+
+### Repository Updates
+- Remote URL changed from `Saent/creativity-guard` to `metztim/creativity-guard`
+- Git email configured to GitHub no-reply address for privacy
+- Commit successfully pushed to remote repository
+
+---
+
+## Session Log: 2025-11-17
+
+**Project**: creativity-guard
+**Duration**: ~5 minutes
+**Type**: [bugfix]
+
+### Objectives
+- Fix blank page issue when navigating to LinkedIn subpages after bypassing the guard
+
+### Summary
+Resolved a critical bug where users who had bypassed the creativity guard on LinkedIn would see a blank page when navigating to subpages (e.g., /mynetwork/grow/). The issue was caused by the session consent check returning early without removing the early blocker element that hides page content.
+
+### Files Changed
+- `extension-dev/content.js` - Added early blocker removal and page reveal code when session consent exists
+
+### Technical Notes
+- **Root Cause**: When `sessionConsent[platform]` was true, the code returned early at line 2200-2203 without removing the `earlyBlockerElement` or revealing the page
+- **Fix Location**: content.js:2203-2222
+- **Solution**: Added cleanup code to remove blocker elements and restore page visibility before the early return
+- **Pattern Used**: Reused the same cleanup pattern already present elsewhere in the function (utility pages, allowed time access)
+
+### Implementation Details
+When session consent exists, the code now:
+1. Removes the early blocker element if present
+2. Removes the hide-flash style element
+3. Restores documentElement and body visibility/opacity
+4. Then returns early (as before)
+
+This ensures that navigating between pages within a bypassed session properly reveals the content.
+
+### Next Actions
+- [x] Fix implemented in extension-dev/content.js
+- [ ] User should reload extension and test on LinkedIn subpages
+- [ ] Consider if similar issue exists on other social media platforms
+
+### Metrics
+- Files modified: 1
+- Lines added: 19
+- Lines removed: 0
+- Bug severity: High (blocked legitimate usage after bypass)
