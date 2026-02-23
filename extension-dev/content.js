@@ -3034,8 +3034,22 @@ const socialMediaModule = {
 
       // Helper function to show countdown
       const showCountdown = (reason, onComplete, onAbort) => {
-        let timeLeft = 20;
+        const COUNTDOWN_DURATION = 30;
+        let timeLeft = COUNTDOWN_DURATION;
         let countdownInterval;
+
+        // Reset countdown when user switches tabs or applications
+        const resetCountdown = () => {
+          if (timeLeft > 0) {
+            timeLeft = COUNTDOWN_DURATION;
+            updateCountdownDisplay();
+          }
+        };
+        const handleVisibilityChange = () => {
+          if (document.hidden) resetCountdown();
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('blur', resetCountdown);
 
         const updateCountdownDisplay = () => {
           content.innerHTML = ''; // Clear existing content
@@ -3110,6 +3124,8 @@ const socialMediaModule = {
 
           abortBtn.addEventListener('click', () => {
             clearInterval(countdownInterval);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('blur', resetCountdown);
             onAbort();
           });
 
@@ -3148,6 +3164,8 @@ const socialMediaModule = {
           timeLeft--;
           if (timeLeft <= 0) {
             clearInterval(countdownInterval);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('blur', resetCountdown);
             onComplete();
           } else {
             updateCountdownDisplay();
